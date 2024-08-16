@@ -1,5 +1,5 @@
 import argparse
-import storage
+import data_storage
 import matchday_file
 
 
@@ -13,18 +13,23 @@ def parse_argument() -> argparse.Namespace:
 
 
 def main(filepath: str):
-    ratings_storage = storage.Storage('ratings.txt')
+    storage = data_storage.Storage('ratings.txt')
     matchday = matchday_file.MatchDayFile(filepath).results
     teams = matchday.teams
     players = [player.name for team in teams for player in team.players]
-    ratings = ratings_storage.get_elos(players)
+    player_data = storage.get_players_data(players)
     for team in teams:
-        team.set_elo(ratings)
-    matchday.update_elo()
-    new_ratings = {
-        player.name: player.elo for team in teams for player in team.players
+        for player in team.players:
+            if player.name in player_data:
+                elo, matches = player_data[player.name]
+                player.elo = elo
+                player.matches = matches
+    matchday.update()
+    new_player_data = {
+        player.name: (player.elo, player.matches) for team in teams for player in team.players
     }
-    ratings_storage.update_elos(new_ratings)
+    storage.set_players_data(new_player_data)
+    storage.save()
 
 
 # Press the green button in the gutter to run the script.
