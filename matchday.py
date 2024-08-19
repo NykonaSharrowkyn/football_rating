@@ -8,7 +8,7 @@ DEFAULT_ELO = 1000.
 @dataclass
 class Player:
     name: str
-    elo: float = DEFAULT_ELO
+    elo: int = DEFAULT_ELO
     matches: int = 0
 
     def update_elo(self):
@@ -40,7 +40,7 @@ class Team:
 
 
 def elo_update(player: Player, actual: float, expected: float):
-    player.elo = player.elo + 32 * (actual - expected)
+    player.elo = int(player.elo + 32 * (actual - expected))
 
 
 @dataclass
@@ -89,4 +89,6 @@ class MatchDay:
             match.update_elo()
 
     def update_matches(self):
-        pass
+        for match in self.matches:
+            for player in match.team1.players + match.team2.players:
+                player.matches += 1
