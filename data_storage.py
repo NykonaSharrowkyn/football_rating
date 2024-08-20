@@ -1,35 +1,107 @@
+import pandas as pd
+import pygsheets
+
+from players_data import PlayersData
+
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Any
 
 
-# TODO: base class later
 @dataclass
-class Storage:
-    filepath: str
-    data = Dict[str, Tuple[int, int]]
+class Storage(ABC):
+    data = PlayersData()
 
     def __post_init__(self):
-        self.data = {}
+        self.read()
+
+    @abstractmethod
+    def read(self):
+        pass
+
+    @abstractmethod
+    def write(self):
+        pass
+
+
+# noinspection PyAbstractClass
+@dataclass
+class FileStorage(Storage):
+    filepath: str
+
+
+@dataclass
+class PlainTextFileStorage(FileStorage):
+    def read(self):
+        self.data.clear()
         try:
             with open(self.filepath, 'r', encoding='utf-8') as file:
-                for line in file:
-                    parts = line.rstrip().split(':')
+                for line in file[1:]:
+                    parts = line.rstrip().split(',')
                     parts = [part.rstrip().lstrip() for part in parts]
                     name = parts[0]
                     elo = int(parts[1])
                     matches = int(parts[2])
-                    self.data[name] = (elo, matches)
+                    self.data.data[name] = (elo, matches)
         except FileNotFoundError:
             pass
 
-    def get_players_data(self, players: List[str]) -> Dict[str, Tuple[int, int]]:
-        return {player: self.data[player] for player in players if player in self.data}
-
-    def set_players_data(self, players: Dict[str, Tuple[int, int]]):
-        for player in players:
-            self.data[player] = players[player]
-
-    def save(self):
+    def write(self):
         with open(self.filepath, 'w', encoding='utf-8') as file:
-            for name, (matches, elo) in self.data.items():
-                file.write(f'{name}:{matches}:{elo}\n')
+            for item in self.data:
+                file.write(",".join(item))
+
+
+@dataclass
+class CsvTextFileStorage(FileStorage):
+    def read(self):
+        try:
+            df = pd.read_csv(self.filepath)
+            df.set_index('Name', inplace=True)
+            self.data.data = df.T.to_dict('list')
+        except FileNotFoundError:
+            pass
+
+    def write(self):
+        df = pd.DataFrame.from_dict(self.data.data, orient='index')
+        df.index.name = 'Name'
+        df.columns = ['Rating', 'Matches']
+        df.to_csv(self.filepath)
+
+
+@dataclass
+class GSheetStorage(Storage):
+    service_file: str
+    file_name: str = 'football-rating'
+    sheet_name: str = 'rating'
+    gc: Any = None
+    wb: Any = None
+    wks: Any = None
+
+    def read(self):
+        self.gc = pygsheets.authorize(service_file=self.service_file)
+        self.wb = self.gc.open(self.file_name)
+        self.wks = self.wb.worksheet_by_title('rating')
+        df = self.wks.get_as_df()
+        df.set_index('Name', inplace=True)
+        self.data.data = df.T.to_dict('list')
+
+    def write(self):
+        df = pd.DataFrame.from_dict(self.data.data, orient='index').reset_index()
+        df.columns = ['Name', 'Rating', 'Matches']
+        self.wks.clear()
+        self.wks.set_dataframe(df, (1, 1))
+        requests = [
+            {
+                "repeatCell": {
+                    "range": self.wks.get_gridrange("A1", "C1"),
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.8, "green": 0.8, "blue": 0.8}
+                        }
+                    },
+                    "fields": "userEnteredFormat.backgroundColor",
+                }
+            }
+        ]
+        self.gc.sheet.batch_update(self.wb.id, requests)

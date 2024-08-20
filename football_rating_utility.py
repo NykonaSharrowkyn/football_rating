@@ -1,6 +1,10 @@
-import argparse
-import data_storage
+import matchday
 import matchday_file
+import data_storage
+
+import argparse
+
+from typing import List
 
 
 def parse_argument() -> argparse.Namespace:
@@ -12,24 +16,46 @@ def parse_argument() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main(filepath: str):
-    storage = data_storage.Storage('ratings.txt')
-    matchday = matchday_file.MatchDayFile(filepath).results
-    teams = matchday.teams
-    players = [player.name for team in teams for player in team.players]
-    player_data = storage.get_players_data(players)
+def check_new_players(players: List[str], stored: List[str]):
+    return True
+    # diff = set(players) - set(stored)
+    # if diff:
+    #     print('New players:')
+    #     for name in diff:
+    #         print(name)
+    #     answer = input('Confirm? [y]')
+    #     if answer.lower() != 'y':
+    #         raise RuntimeError('No confirmation, abort.')
+
+
+def player_generator(teams: List[matchday.Team]):
     for team in teams:
         for player in team.players:
-            if player.name in player_data:
-                elo, matches = player_data[player.name]
-                player.elo = elo
-                player.matches = matches
-    matchday.update()
+            yield player
+
+
+def main(filepath: str):
+    # storage = data_storage.CsvTextFileStorage('ratings.csv')
+    storage = data_storage.GSheetStorage('eternal-delight-433008-q1-1bb6245a61a9.json')
+    players_data = storage.data
+    results = matchday_file.MatchDayFile(filepath).results
+    teams = results.teams
+    players = [player.name for player in player_generator(teams)]
+    stored_players = players_data.get_players_data(players)
+    check_new_players(players, list(stored_players.keys()))
+    for player in player_generator(teams):
+        try:
+            elo, matches = stored_players[player.name]
+            player.elo = elo
+            player.matches = matches
+        except KeyError:
+            pass
+    results.update_players()
     new_player_data = {
-        player.name: (player.elo, player.matches) for team in teams for player in team.players
+        player.name: (player.elo, player.matches) for player in player_generator(teams)
     }
-    storage.set_players_data(new_player_data)
-    storage.save()
+    players_data.set_players_data(new_player_data)
+    storage.write()
 
 
 # Press the green button in the gutter to run the script.

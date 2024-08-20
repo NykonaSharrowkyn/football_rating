@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from typing import List, Dict
+from dataclasses import dataclass
+from typing import List
 
 
 DEFAULT_ELO = 1000.
@@ -10,9 +10,6 @@ class Player:
     name: str
     elo: int = DEFAULT_ELO
     matches: int = 0
-
-    def update_elo(self):
-        pass
 
 
 @dataclass
@@ -80,7 +77,7 @@ class MatchDay:
     def short_teams_names(self):
         return {team.short_name(): team for team in self.teams}
 
-    def update(self):
+    def update_players(self):
         self.update_elo()
         self.update_matches()
 
