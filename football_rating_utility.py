@@ -1,5 +1,5 @@
 import matchday
-import matchday_file
+import text_parser
 import data_storage
 
 import argparse
@@ -16,18 +16,6 @@ def parse_argument() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def check_new_players(players: List[str], stored: List[str]):
-    return True
-    # diff = set(players) - set(stored)
-    # if diff:
-    #     print('New players:')
-    #     for name in diff:
-    #         print(name)
-    #     answer = input('Confirm? [y]')
-    #     if answer.lower() != 'y':
-    #         raise RuntimeError('No confirmation, abort.')
-
-
 def player_generator(teams: List[matchday.Team]):
     for team in teams:
         for player in team.players:
@@ -38,11 +26,11 @@ def main(filepath: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
     storage = data_storage.GSheetStorage('eternal-delight-433008-q1-1bb6245a61a9.json')
     players_data = storage.data
-    results = matchday_file.MatchDayFile(filepath).results
+    results = text_parser.MatchDayFile(filepath).results
     teams = results.teams
     players = [player.name for player in player_generator(teams)]
     stored_players = players_data.get_players_data(players)
-    check_new_players(players, list(stored_players.keys()))
+    text_parser.check_new_players(players, list(stored_players.keys()))
     for player in player_generator(teams):
         try:
             elo, matches = stored_players[player.name]

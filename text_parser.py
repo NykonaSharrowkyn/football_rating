@@ -1,0 +1,92 @@
+import re
+
+from matchday import Match, MatchDay, Player, Team
+
+from dataclasses import dataclass, field
+from typing import List
+
+
+def read_match(match_line: str, teams: List[Team]) -> Match:
+    team_dict = {team.short_name(): team for team in teams}
+    m = re.match(r"\s*([А-Яа-я]+)\s*(\d+)\s*:\s*(\d+)\s*([А-Яа-я]+)\s*", match_line)
+    team1 = team_dict[m.group(1).lower()]
+    goals1 = int(m.group(2))
+    goals2 = int(m.group(3))
+    team2 = team_dict[m.group(4).lower()]
+    return Match(team1, team2, goals1, goals2)
+
+
+def read_team(team_line: str) -> Team:
+    colon = team_line.index(':')
+    team_name = team_line[:colon].rstrip().lstrip()
+    names = [name.lstrip().rstrip() for name in team_line[colon + 1:].split(',')]
+    players = [Player(name) for name in names]
+    return Team(team_name, players)
+
+
+def read_lines(filepath: str) -> List[str]:
+    with open(filepath, 'r', encoding='utf-8') as file:
+        lines = [line.rstrip() for line in file]
+    return lines
+
+
+def check_new_players(players: List[str], stored: List[str]):
+    # return True
+    diff = set(players) - set(stored)
+    if diff:
+        print('New players:')
+        for name in diff:
+            print(name)
+        answer = input('Confirm? [y]')
+        if answer.lower() != 'y':
+            raise RuntimeError('No confirmation, abort.')
+
+
+@dataclass
+class MatchDayFile:
+    filepath: str
+    results: MatchDay = MatchDay([], [])
+
+    def __post_init__(self):
+        self.read(self.filepath)
+
+    def read(self, filepath):
+        lines = read_lines(filepath)
+        index = lines.index('')
+        team_lines = lines[:index]
+        result_lines = lines[index + 1:]
+        self.results.teams = [read_team(line) for line in team_lines]
+        self.results.matches = [
+            read_match(line, self.results.teams) for line in result_lines
+        ]
+
+
+@dataclass
+class PlayersFile:
+    filepath: str
+    players: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.read(self.filepath)
+
+    def read(self, filepath: str):
+        lines = read_lines(filepath)
+        if not re.match(r'\s*\d', lines[0]):
+            lines.pop(0)
+        split_words = [
+            'без',
+            'абик',
+            'вместо',
+            'б/а',
+            'аб'
+        ]
+        split_words = '|'.join(split_words)
+        reg = re.compile(rf'\d+\s*\.\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*({split_words}).*')
+        for i, line in enumerate(lines):
+            m = re.fullmatch(reg, line.lower())
+            if not m:
+                raise ValueError(f'Line {i} is not match to regular expression.')
+            name = line[m.start(1):m.end(1)]
+            if name.endswith('.'):
+                name = name[:-1]
+            self.players.append(name)

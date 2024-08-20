@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import List
 
 
-DEFAULT_ELO = 1000.
+DEFAULT_ELO = 1250
 
 
 @dataclass
