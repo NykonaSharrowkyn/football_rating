@@ -37,7 +37,7 @@ class Team:
 
 
 def elo_update(player: Player, actual: float, expected: float):
-    player.elo = int(player.elo + 32 * (actual - expected))
+    player.elo = int(player.elo + (50/(1 + player.matches/300)) * (actual - expected))
 
 
 @dataclass

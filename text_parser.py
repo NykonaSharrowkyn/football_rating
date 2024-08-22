@@ -1,4 +1,5 @@
 import re
+import sys
 
 from matchday import Match, MatchDay, Player, Team
 
@@ -37,9 +38,8 @@ def check_new_players(players: List[str], stored: List[str]):
         print('New players:')
         for name in diff:
             print(name)
-        answer = input('Confirm? [y]')
-        if answer.lower() != 'y':
-            raise RuntimeError('No confirmation, abort.')
+        print('Add new players rating to storage')
+        sys.exit(1)
 
 
 @dataclass
@@ -74,15 +74,21 @@ class PlayersFile:
         if not re.match(r'\s*\d', lines[0]):
             lines.pop(0)
         split_words = [
-            'без',
-            'абик',
             'вместо',
+            'без абика',
+            'абик',
             'б/а',
             'аб'
         ]
-        split_words = '|'.join(split_words)
-        reg = re.compile(rf'\d+\s*\.\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*({split_words}).*')
+        reg = re.compile(r'\d+\s*\.\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
         for i, line in enumerate(lines):
+            for word in split_words:
+                try:
+                    index = line.lower().index(word)
+                    line = line[:index]
+                    break
+                except ValueError:
+                    pass
             m = re.fullmatch(reg, line.lower())
             if not m:
                 raise ValueError(f'Line {i} is not match to regular expression.')

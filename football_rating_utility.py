@@ -3,6 +3,7 @@ import text_parser
 import data_storage
 
 import argparse
+import sys
 
 from typing import List
 
@@ -24,12 +25,21 @@ def player_generator(teams: List[matchday.Team]):
 
 def main(filepath: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
-    storage = data_storage.GSheetStorage('eternal-delight-433008-q1-1bb6245a61a9.json')
+    storage_name = 'football-rating'
+    storage = data_storage.GSheetStorage(
+        'eternal-delight-433008-q1-1bb6245a61a9.json',
+        file_name= storage_name
+    )
+    if storage_name == 'football-rating':
+        key = input('Update main storage? [y]:')
+        if key.lower() != 'y':
+            print('Main storage guard abort')
+            sys.exit(1)
     players_data = storage.data
     results = text_parser.MatchDayFile(filepath).results
     teams = results.teams
     players = [player.name for player in player_generator(teams)]
-    stored_players = players_data.get_players_data(players)
+    stored_players = players_data.get_players_match_data(players)
     text_parser.check_new_players(players, list(stored_players.keys()))
     for player in player_generator(teams):
         try:
@@ -42,7 +52,7 @@ def main(filepath: str):
     new_player_data = {
         player.name: (player.elo, player.matches) for player in player_generator(teams)
     }
-    players_data.set_players_data(new_player_data)
+    players_data.set_players_match_data(new_player_data)
     storage.write()
 
 

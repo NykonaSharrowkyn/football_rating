@@ -31,19 +31,23 @@ def main(filepath: str):
         'eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name='football-rating-test'
     ).data
-    players_data = all_data.get_players_data(players)
+    players_data = all_data.get_players_match_data(players)
     stored_players = list(players_data.keys())
     text_parser.check_new_players(players, stored_players)
     new_players = set(players) - set(stored_players)
     new_players_data = {name: [0, DEFAULT_ELO] for name in new_players}
     players_data |= new_players_data
     df = get_df(players_data)
-    matchmaker = MatchMaking(df, 5, to_file=True)
+    matchmaker = MatchMaking(df, 5)
     df = matchmaker.optimize()
-    teams = df.groupby(['team'])['player']
+    teams = df.groupby(['team'])[['player', 'skill']]
     for key, _ in teams:
-        players = list(teams.get_group(key))
-        print(f'{key}:{players}')
+        team = teams.get_group(key)
+        players = team['player'].tolist()
+        score = team['skill'].mean()
+        team = key[0]
+        players_str = ', '.join(players)
+        print(f'Команда {team}: {players_str} - средний {score}')
 
 
 if __name__ == '__main__':
