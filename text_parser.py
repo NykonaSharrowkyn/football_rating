@@ -19,6 +19,9 @@ def read_match(match_line: str, teams: List[Team]) -> Match:
 
 def read_team(team_line: str) -> Team:
     colon = team_line.index(':')
+    dash = team_line.find('-')
+    if dash != -1:
+        team_line = team_line[:dash]
     team_name = team_line[:colon].rstrip().lstrip()
     names = [name.lstrip().rstrip() for name in team_line[colon + 1:].split(',')]
     players = [Player(name) for name in names]

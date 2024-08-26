@@ -21,10 +21,11 @@ class PlayersStorageData:
         df = pd.DataFrame.from_dict(players, orient='index')
         df.index.name = 'Name'
         df.columns = ['Rating', 'Matches']
-        prev_rating = self.df['Rating']
-        diff = df['Rating'] - self.df['Rating']
-        df['Prev'] = prev_rating
+        prev_rating = self.df['Rating'][self.df.index.isin(df.index)]
+        diff = (df['Rating'] - self.df['Rating'])
+        df['Prev rating'] = prev_rating
         df['Change'] = diff
+        self.df['Change'] = 0
         self.df.update(df)
         self.sort()
 

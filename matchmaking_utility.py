@@ -45,9 +45,9 @@ def main(filepath: str):
         team = teams.get_group(key)
         players = team['player'].tolist()
         score = team['skill'].mean()
-        team = key[0]
+        team_str = key[0]
         players_str = ', '.join(players)
-        print(f'Команда {team}: {players_str} - средний {score}')
+        print(f'Команда {team_str}: {players_str} - средний {score}')
 
 
 if __name__ == '__main__':

@@ -25,7 +25,7 @@ def player_generator(teams: List[matchday.Team]):
 
 def main(filepath: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
-    storage_name = 'football-rating'
+    storage_name = 'football-rating-test'
     storage = data_storage.GSheetStorage(
         'eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name= storage_name
