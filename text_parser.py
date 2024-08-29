@@ -77,15 +77,20 @@ class PlayersFile:
         if not re.match(r'\s*\d', lines[0]):
             lines.pop(0)
         split_words = [
-            'вместо',
-            'без абика',
-            'абик',
-            'б/а',
-            'аб'
+            ' вместо',
+            ' без абика',
+            ' абик',
+            ' б/а',
+            ' ба',
+            ' аб'
         ]
         reg = re.compile(r'\d+\s*\.\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
         for i, line in enumerate(lines):
             for word in split_words:
+                if line.lower().endswith(word):
+                    line = line[:-len(word)]
+                    break
+                word += ' '
                 try:
                     index = line.lower().index(word)
                     line = line[:index]
