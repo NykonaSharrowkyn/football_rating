@@ -5,12 +5,14 @@ from players_data import PlayersStorageData
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from datetime import date, datetime
+from typing import Any, Tuple
 
 
 @dataclass
 class Storage(ABC):
-    data = PlayersStorageData()
+    data: PlayersStorageData = PlayersStorageData()
+    dt: date = date.today()
 
     def __post_init__(self):
         self.read()
@@ -23,11 +25,17 @@ class Storage(ABC):
     def write(self):
         pass
 
+    def update_time_stats(self):
+        pass
+
+    # def set_date(self, dt: datetime):
+    #     self.dt = dt
+
 
 # noinspection PyAbstractClass
 @dataclass
 class FileStorage(Storage):
-    filepath: str
+    filepath: str | None = None
 
 
 @dataclass
@@ -75,7 +83,7 @@ class CsvTextFileStorage(FileStorage):
 
 @dataclass
 class GSheetStorage(Storage):
-    service_file: str
+    service_file: str | None = None
     file_name: str = 'football-rating'
     sheet_name: str = 'rating'
     gc: Any = None
@@ -95,13 +103,45 @@ class GSheetStorage(Storage):
         df = self.data.df.copy()
         self.wks.clear()
         self.wks.set_dataframe(df.reset_index(), (1, 1))
+        self._update_color(self.wks, ("A1", "E1"), (0.0, 0.8, 0.0))
+
+    def update_time_stats(self):
+        year = self.dt.strftime("%Y")
+        try:
+            wks = self.wb.worksheet_by_title(year)
+        except pygsheets.exceptions.WorksheetNotFound:
+            wks = self.wb.add_worksheet(year)
+        old_df = wks.get_as_df(numerize=False)
+        new_df = self.data.get_players_rating().reset_index()
+        column_format = "%m.%Y"
+        column_name = self.dt.strftime(column_format)
+        new_df.columns = ['Name', column_name]
+        if not old_df.empty:
+            old_df.set_index('Name', inplace=True)
+            old_df = old_df.astype(int)
+            last_month = datetime.strptime(str(old_df.columns[-1]), column_format).date()
+            current_month = self.dt.replace(day=1)
+            if not current_month > last_month:
+                return
+            new_df.set_index('Name', inplace=True)
+            new_df = pd.concat([old_df, new_df], axis=1)
+            new_df = new_df.fillna(value=0).astype(int)
+            new_df.sort_values(column_name, ascending=False, inplace=True)
+            new_df.reset_index(inplace=True)
+
+        wks.set_dataframe(new_df, (1, 1))
+        end = chr(ord('A') + new_df.shape[1] - 1) + '1'
+        self._update_color(wks, ("A1", end), (0.8, 0.8, 0.8))
+
+    def _update_color(self, wks, grid_range: Tuple[str, ...], rgb: Tuple[float, ...]):
+        red, green, blue = rgb
         requests = [
             {
                 "repeatCell": {
-                    "range": self.wks.get_gridrange("A1", "E1"),
+                    "range": wks.get_gridrange(*grid_range),
                     "cell": {
                         "userEnteredFormat": {
-                            "backgroundColor": {"red": 0.0, "green": 0.8, "blue": 0.0}
+                            "backgroundColor": {"red": red, "green": green, "blue": blue}
                         }
                     },
                     "fields": "userEnteredFormat.backgroundColor",

@@ -27,19 +27,20 @@ def main(filepath: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
     storage_name = 'football-rating-test'
     storage = data_storage.GSheetStorage(
-        'eternal-delight-433008-q1-1bb6245a61a9.json',
-        file_name= storage_name
+        service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
+        file_name=storage_name
     )
     if storage_name == 'football-rating':
         key = input('Update main storage? [y]:')
         if key.lower() != 'y':
             print('Main storage guard abort')
             sys.exit(1)
+    storage.update_time_stats()
     players_data = storage.data
     results = text_parser.MatchDayFile(filepath).results
     teams = results.teams
     players = [player.name for player in player_generator(teams)]
-    stored_players = players_data.get_players_match_data(players)
+    stored_players = players_data.get_players_match_data_dict(players)
     text_parser.check_new_players(players, list(stored_players.keys()))
     for player in player_generator(teams):
         try:
@@ -48,6 +49,10 @@ def main(filepath: str):
             player.matches = matches
         except KeyError:
             pass
+    for team in teams:
+        players_elo = [player.elo for player in team.players]
+        team_elo = sum(players_elo) / len(players_elo)
+        print(f'Команда {team.name} - средний {team_elo}')
     results.update_players()
     new_player_data = {
         player.name: (player.elo, player.matches) for player in player_generator(teams)

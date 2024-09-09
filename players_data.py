@@ -13,9 +13,12 @@ class PlayersStorageData:
     def get_players_data(self, players: List[str]) -> pd.Series:
         return self.df[self.df.index.isin(players)]
 
-    def get_players_match_data(self, players: List[str]) -> Dict[str, List[int]]:
+    def get_players_match_data_dict(self, players: List[str]) -> Dict[str, List[int]]:
         series = self.get_players_data(players)
         return series[['Rating', 'Matches']].T.to_dict('list')
+
+    def get_players_rating(self):
+        return self.df['Rating']
 
     def set_players_match_data(self, players: Dict[str, List[int]]):
         df = pd.DataFrame.from_dict(players, orient='index')

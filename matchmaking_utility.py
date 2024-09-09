@@ -31,7 +31,7 @@ def main(filepath: str):
         'eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name='football-rating-test'
     ).data
-    players_data = all_data.get_players_match_data(players)
+    players_data = all_data.get_players_match_data_dict(players)
     stored_players = list(players_data.keys())
     text_parser.check_new_players(players, stored_players)
     new_players = set(players) - set(stored_players)
