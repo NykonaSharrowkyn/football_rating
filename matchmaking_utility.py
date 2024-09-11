@@ -28,7 +28,7 @@ def get_df(players_data: Dict[str, List[int]]) -> pd.DataFrame:
 def main(filepath: str):
     players = text_parser.PlayersFile(filepath).players
     all_data = data_storage.GSheetStorage(
-        'eternal-delight-433008-q1-1bb6245a61a9.json',
+        service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name='football-rating-test'
     ).data
     players_data = all_data.get_players_match_data_dict(players)
