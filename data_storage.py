@@ -90,6 +90,13 @@ class GSheetStorage(Storage):
     wb: Any = None
     wks: Any = None
 
+    def check_sheet(self, name: str):
+        try:
+            wks = self.wb.worksheet_by_title(name)
+        except pygsheets.exceptions.WorksheetNotFound:
+            wks = self.wb.add_worksheet(name)
+        return wks
+
     def read(self):
         self.gc = pygsheets.authorize(service_file=self.service_file)
         self.wb = self.gc.open(self.file_name)
@@ -99,18 +106,25 @@ class GSheetStorage(Storage):
         self.data.df = df
         self.data.sort()
 
+    def read_sheet(self, sheet_name) -> pd.DataFrame:
+        wks = self.check_sheet(sheet_name)
+        return wks.get_as_df()
+
     def write(self):
         df = self.data.df.copy()
         self.wks.clear()
         self.wks.set_dataframe(df.reset_index(), (1, 1))
         self._update_color(self.wks, ("A1", "E1"), (0.0, 0.8, 0.0))
 
+    def write_sheet(self, sheet_name, df: pd.DataFrame):
+        wks = self.wb.worksheet_by_title(sheet_name)
+        wks.set_dataframe(df, (1, 1))
+        end = chr(ord('A') + df.shape[1] - 1) + '1'
+        self._update_color(wks, ("A1", end), (0.8, 0.8, 0.8))
+
     def update_time_stats(self):
         year = self.dt.strftime("%Y")
-        try:
-            wks = self.wb.worksheet_by_title(year)
-        except pygsheets.exceptions.WorksheetNotFound:
-            wks = self.wb.add_worksheet(year)
+        wks = self.check_sheet(year)
         old_df = wks.get_as_df(numerize=False)
         new_df = self.data.get_players_rating().reset_index()
         column_format = "%m.%Y"

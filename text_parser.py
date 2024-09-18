@@ -1,9 +1,11 @@
+import datetime
 import re
 import sys
 
 from matchday import Match, MatchDay, Player, Team
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List
 
 
@@ -62,6 +64,10 @@ class MatchDayFile:
         self.results.matches = [
             read_match(line, self.results.teams) for line in result_lines
         ]
+        self.results.date = datetime.datetime.strptime(
+            Path(self.filepath).stem,
+            "%Y-%m-%d"
+        ).date()
 
 
 @dataclass

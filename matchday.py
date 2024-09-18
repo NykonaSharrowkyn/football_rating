@@ -1,6 +1,7 @@
+import datetime
+from collections import Counter
 from dataclasses import dataclass
 from typing import List
-
 
 DEFAULT_ELO = 1250
 
@@ -70,9 +71,19 @@ class Match:
 
 
 class MatchDay:
-    def __init__(self, matches: List[Match] = None, teams: List[Team] = None):
+    def __init__(
+            self,
+            matches: List[Match] = None,
+            teams: List[Team] = None,
+            date: datetime.date = datetime.date.today()
+    ):
         self.matches = matches or []
         self.teams = teams or []
+        self.date = date
+
+    def matches_per_player(self) -> dict:
+        players = [player.name for match in self.matches for player in match.team1.players + match.team2.players]
+        return dict(Counter(players))
 
     def short_teams_names(self):
         return {team.short_name(): team for team in self.teams}
