@@ -52,7 +52,7 @@ def save_match_played(
 
 def main(filepath: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
-    storage_name = 'football-rating-test-2'
+    storage_name = 'football-rating-test'
     storage = data_storage.GSheetStorage(
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name=storage_name
