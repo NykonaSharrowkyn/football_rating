@@ -64,10 +64,11 @@ class MatchDayFile:
         self.results.matches = [
             read_match(line, self.results.teams) for line in result_lines
         ]
-        self.results.date = datetime.datetime.strptime(
-            Path(self.filepath).stem,
-            "%Y-%m-%d"
-        ).date()
+        basename = Path(self.filepath).stem
+        underscore = basename.find('_')
+        if underscore != -1:
+            basename = basename[:underscore]
+        self.results.date = datetime.datetime.strptime(basename, "%Y-%m-%d").date()
 
 
 @dataclass
