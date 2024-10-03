@@ -7,7 +7,7 @@ import pandas as pd
 from matchday import DEFAULT_ELO
 from matchmaking import MatchMaking
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 
 def parse_argument() -> argparse.Namespace:
@@ -23,6 +23,29 @@ def get_df(players_data: Dict[str, List[int]]) -> pd.DataFrame:
     df = pd.DataFrame.from_dict(players_data, orient='index').reset_index()
     df.columns = ['player', 'skill', 'matches']
     return df
+
+
+def get_teams(teams: List[str]) -> List[str]:
+    players_dict = {
+        'Макс И': 'Красные',
+        'Вова К': 'Синие',
+        'Коля М': 'Желтые'
+    }
+
+    team_dict = {}
+    for i, team in enumerate(teams):
+        for key_name in players_dict:
+            if key_name in team:
+                team_dict[i] = players_dict[key_name]
+                break
+
+    unused_idx = set(range(len(teams))) - set(team_dict.keys())
+    unused_names = set(players_dict.values()) - set(team_dict.values())
+    if len(unused_idx) > len(unused_names):      # something gone wrong
+        return [f'Команда {i}: {team}' for i, team in enumerate(teams)]
+
+    team_dict.update({i: name for i, name in zip(unused_idx, unused_names)})
+    return [f'{team_dict[i]}: {team}' for i, team in enumerate(teams)]
 
 
 def main(filepath: str):
@@ -41,13 +64,17 @@ def main(filepath: str):
     matchmaker = MatchMaking(df, 5)
     df = matchmaker.optimize()
     teams = df.groupby(['team'])[['player', 'skill']]
+    team_list = []
     for key, _ in teams:
         team = teams.get_group(key)
         players = team['player'].tolist()
         score = team['skill'].mean()
-        team_str = key[0]
+        # team_str = key[0]
         players_str = ', '.join(players)
-        print(f'Команда {team_str}: {players_str} - средний {score}')
+        team_list.append(f'{players_str} - средний {score}')
+
+    for team in get_teams(team_list):
+        print(team)
 
 
 if __name__ == '__main__':

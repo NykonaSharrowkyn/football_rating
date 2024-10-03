@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import List
 
 
-def read_match(match_line: str, teams: List[Team]) -> Match:
+def read_match(match_line: str, teams: List[Team]) -> Match | None:
     team_dict = {team.short_name(): team for team in teams}
     m = re.match(r"\s*([А-Яа-я]+)\s*(\d+)\s*:\s*(\d+)\s*([А-Яа-я]+)\s*", match_line)
+    if m is None:
+        return None
     team1 = team_dict[m.group(1).lower()]
     goals1 = int(m.group(2))
     goals2 = int(m.group(3))
@@ -64,6 +66,7 @@ class MatchDayFile:
         self.results.matches = [
             read_match(line, self.results.teams) for line in result_lines
         ]
+        self.results.matches = [match for match in self.results.matches if match is not None]
         basename = Path(self.filepath).stem
         underscore = basename.find('_')
         if underscore != -1:
