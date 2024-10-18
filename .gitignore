@@ -1,2 +1,5 @@
 .idea
-*.txt
+football_rating/*/*.txt
+*.json
+.venv
+__pycache__

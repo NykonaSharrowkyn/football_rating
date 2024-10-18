@@ -3,6 +3,7 @@ import text_parser
 
 import argparse
 import pandas as pd
+import os
 
 from matchday import DEFAULT_ELO
 from matchmaking import MatchMaking
@@ -50,8 +51,9 @@ def get_teams(teams: List[str]) -> List[str]:
 
 def main(filepath: str):
     players = text_parser.PlayersFile(filepath).players
+    service_file = os.path.join(os.path.dirname(__file__), 'eternal-delight-433008-q1-1bb6245a61a9.json')
     all_data = data_storage.GSheetStorage(
-        service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
+        service_file=service_file,
         file_name='football-rating-test'
     ).data
     players_data = all_data.get_players_match_data_dict(players)
