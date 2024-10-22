@@ -6,6 +6,8 @@ import pandas as pd
 
 from log import get_logger
 
+from matchday import Team, Player
+
 logger = get_logger(__name__)
 
 
@@ -307,8 +309,24 @@ class MatchMaking:
         The team means are the differences of the team's player's mean skill to
         the overall mean skill of all players.
         """
-        means = df.groupby("team")["skill"].mean()
-        return means - means.mean()
+        # means = df.groupby("team")["skill"].mean()
+        # return means - means.mean()
+        teams_df = df.groupby("team")[["player", "skill"]]
+        teams = []
+        for i, (_, team_df) in enumerate(teams_df):
+            players = [Player(row['player'], row['skill']) for _, row in team_df.iterrows()]
+            teams.append(Team(f"team {i}", players))
+        
+        expected = np.array([[team1.expected_score(team2) for team2 in teams] for team1 in teams])
+        expected = expected[~np.eye(expected.shape[0],dtype=bool)].reshape(expected.shape[0],-1)
+        means = expected.mean(axis=1)
+        means -= means.mean()
+        means_df = pd.Series(means)
+        means_df.name = 'skill'
+        return means_df
+
+        
+
 
     @staticmethod
     def calc_score(means_dev):

@@ -2,10 +2,12 @@ import data_storage
 import text_parser
 
 import argparse
+import numpy as np
 import pandas as pd
 import os
+import sys
 
-from matchday import DEFAULT_ELO
+from matchday import DEFAULT_ELO, Team, Player
 from matchmaking import MatchMaking
 
 from typing import Dict, List, Tuple
@@ -48,12 +50,24 @@ def get_teams(teams: List[str]) -> List[str]:
     team_dict.update({i: name for i, name in zip(unused_idx, unused_names)})
     return [f'{team_dict[i]}: {team}' for i, team in enumerate(teams)]
 
+def test_expected(players_list: list, players_data: dict):
+    teams = []
+    for i, players in enumerate(players_list):
+        teams.append(
+            Team(
+                f'team {i}',
+                [Player(p, players_data[p][0]) for p in players]
+            )
+        )
+    expected = np.array([[team1.expected_score(team2) for team2 in teams] for team1 in teams])
+    print(expected)
+
 
 def main(filepath: str):
+    os.chdir(sys.path[0])
     players = text_parser.PlayersFile(filepath).players
-    service_file = os.path.join(os.path.dirname(__file__), 'eternal-delight-433008-q1-1bb6245a61a9.json')
     all_data = data_storage.GSheetStorage(
-        service_file=service_file,
+        service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name='football-rating-test'
     ).data
     players_data = all_data.get_players_match_data_dict(players)
@@ -67,9 +81,11 @@ def main(filepath: str):
     df = matchmaker.optimize()
     teams = df.groupby(['team'])[['player', 'skill']]
     team_list = []
+    players_list = []
     for key, _ in teams:
         team = teams.get_group(key)
         players = team['player'].tolist()
+        players_list.append(players)
         score = team['skill'].mean()
         # team_str = key[0]
         players_str = ', '.join(players)
@@ -77,6 +93,8 @@ def main(filepath: str):
 
     for team in get_teams(team_list):
         print(team)
+
+    test_expected(players_list, players_data)
 
 
 if __name__ == '__main__':

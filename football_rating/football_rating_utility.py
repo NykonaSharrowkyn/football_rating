@@ -8,6 +8,7 @@ import text_parser
 import data_storage
 
 import argparse
+import os
 import sys
 
 from typing import List
@@ -52,6 +53,7 @@ def save_match_played(
 
 def main(filepath: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
+    os.chdir(sys.path[0])
     storage_name = 'football-rating-test'
     storage = data_storage.GSheetStorage(
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',

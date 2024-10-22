@@ -84,6 +84,7 @@ class PlayersFile:
 
     def read(self, filepath: str):
         lines = read_lines(filepath)
+        lines.remove('')
         if not re.match(r'\s*\d', lines[0]):
             lines.pop(0)
         split_words = [
