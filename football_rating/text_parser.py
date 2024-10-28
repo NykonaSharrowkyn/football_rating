@@ -11,7 +11,7 @@ from typing import List
 
 def read_match(match_line: str, teams: List[Team]) -> Match | None:
     team_dict = {team.short_name(): team for team in teams}
-    m = re.match(r"\s*([А-Яа-я]+)\s*(\d+)\s*:\s*(\d+)\s*([А-Яа-я]+)\s*", match_line)
+    m = re.match(r"\s*([А-Яа-я]+)\s*(\d+)\s*[:-]\s*(\d+)\s*([А-Яа-я]+)\s*", match_line)
     if m is None:
         return None
     team1 = team_dict[m.group(1).lower()]
