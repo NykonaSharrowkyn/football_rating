@@ -84,8 +84,7 @@ class PlayersFile:
 
     def read(self, filepath: str):
         lines = read_lines(filepath)
-        lines.remove('')
-        if not re.match(r'\s*\d', lines[0]):
+        while not re.match(r'\s*\d', lines[0]):
             lines.pop(0)
         split_words = [
             ' вместо',
@@ -97,6 +96,8 @@ class PlayersFile:
         ]
         reg = re.compile(r'\d+\s*\.\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
         for i, line in enumerate(lines):
+            if ',' in line:
+                line.remove(',')
             for word in split_words:
                 if line.lower().endswith(word):
                     line = line[:-len(word)]
