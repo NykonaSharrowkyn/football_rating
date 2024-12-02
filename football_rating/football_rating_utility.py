@@ -11,7 +11,7 @@ import argparse
 import os
 import sys
 
-from typing import List
+from typing import List, Dict, Tuple
 
 
 def parse_argument() -> argparse.Namespace:
@@ -82,6 +82,9 @@ def main(filepath: str):
         players_elo = [player.elo for player in team.players]
         team_elo = sum(players_elo) / len(players_elo)
         print(f'Команда {team.name} - средний {team_elo}')
+
+    print(results.get_scores())
+
     results.update_players()
     new_player_data = {
         player.name: (player.elo, player.matches) for player in player_generator(teams)

@@ -1,4 +1,5 @@
 import datetime
+import numpy as np
 from collections import Counter
 from dataclasses import dataclass
 from typing import List
@@ -100,3 +101,23 @@ class MatchDay:
         for match in self.matches:
             for player in match.team1.players + match.team2.players:
                 player.matches += 1
+    
+    def get_scores(self) -> dict:
+        scores = {team.name: np.zeros((1, 3), dtype=int) for team in self.teams}
+        for match in self.matches:            
+            update1 = np.zeros((3,), dtype=int)
+            update2 = np.zeros((3,), dtype=int)
+            if match.result == 0.:
+                update2[0] += 3
+            elif match.result == 1.:
+                update1[0] += 3
+            else:
+                update1[0] += 1
+                update2[0] += 1
+            update1 += [0, match.goals1, -match.goals2]
+            update2 += [0, match.goals2, -match.goals1]
+            scores[match.team1.name] += update1
+            scores[match.team2.name] += update2
+        return scores
+            
+            
