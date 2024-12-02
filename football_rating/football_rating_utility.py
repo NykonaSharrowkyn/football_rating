@@ -53,6 +53,7 @@ def save_match_played(
 
 def main(filepath: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
+    cwd = os.getcwd()
     os.chdir(sys.path[0])
     storage_name = 'football-rating-test'
     storage = data_storage.GSheetStorage(
@@ -91,7 +92,8 @@ def main(filepath: str):
     }
     stored_data.set_players_match_data(new_player_data)
     storage.write()
-    save_match_played(storage, results)
+    # save_match_played(storage, results) # no need anymore
+    os.chdir(cwd)
 
 
 # Press the green button in the gutter to run the script.
