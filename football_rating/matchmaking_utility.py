@@ -45,10 +45,10 @@ def get_teams(teams: List[str]) -> List[str]:
     unused_idx = set(range(len(teams))) - set(team_dict.keys())
     unused_names = set(players_dict.values()) - set(team_dict.values())
     if len(unused_idx) > len(unused_names):      # something gone wrong
-        return [f'Команда {i}: {team}' for i, team in enumerate(teams)]
+        return [f'**Команда {i}**: {team}' for i, team in enumerate(teams)]
 
     team_dict.update({i: name for i, name in zip(unused_idx, unused_names)})
-    return [f'{team_dict[i]}: {team}' for i, team in enumerate(teams)]
+    return [f'**{team_dict[i]}**: {team}' for i, team in enumerate(teams)]
 
 def test_expected(players_list: list, players_data: dict):
     teams = []
@@ -77,7 +77,7 @@ def main(filepath: str):
     new_players_data = {name: [0, DEFAULT_ELO] for name in new_players}
     players_data |= new_players_data
     df = get_df(players_data)
-    matchmaker = MatchMaking(df, 5)
+    matchmaker = MatchMaking(df, 6)
     df = matchmaker.optimize()
     teams = df.groupby(['team'])[['player', 'skill']]
     team_list = []
