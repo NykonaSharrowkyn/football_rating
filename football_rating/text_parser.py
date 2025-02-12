@@ -111,7 +111,7 @@ class PlayersFile:
                     pass
             m = re.fullmatch(reg, line.lower())
             if not m:
-                raise ValueError(f'Line {i} is not match to regular expression.')
+                raise ValueError(f'Line {line} does not match to regular expression.')
             name = line[m.start(1):m.end(1)]
             if name.endswith('.'):
                 name = name[:-1]
