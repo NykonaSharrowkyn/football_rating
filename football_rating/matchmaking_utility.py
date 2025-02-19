@@ -77,7 +77,7 @@ def main(filepath: str):
     new_players_data = {name: [0, DEFAULT_ELO] for name in new_players}
     players_data |= new_players_data
     df = get_df(players_data)
-    matchmaker = MatchMaking(df, 6)
+    matchmaker = MatchMaking(df, 5)
     df = matchmaker.optimize()
     teams = df.groupby(['team'])[['player', 'skill']]
     team_list = []
