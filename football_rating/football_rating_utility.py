@@ -20,6 +20,7 @@ def parse_argument() -> argparse.Namespace:
         description='File based football elo rating program'
     )
     parser.add_argument('filepath', help='text file with match results')
+    parser.add_argument('-s', '--storage', default='football-rating-test')
     return parser.parse_args()
 
 
@@ -51,22 +52,14 @@ def save_match_played(
     storage.write_sheet(sheet_name, df.reset_index())
 
 
-def main(filepath: str):
+def update_rating(filepath: str, storage: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
-    cwd = os.getcwd()
-    os.chdir(sys.path[0])
-    storage_name = 'football-rating-test'
-    storage = data_storage.GSheetStorage(
+    google_storage = data_storage.GSheetStorage(
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
-        file_name=storage_name
+        file_name=storage
     )
-    if storage_name == 'football-rating':
-        key = input('Update main storage? [y]:')
-        if key.lower() != 'y':
-            print('Main storage guard abort')
-            sys.exit(1)
-    storage.update_time_stats()
-    stored_data = storage.data
+    google_storage.update_time_stats()
+    stored_data = google_storage.data
     results = text_parser.MatchDayFile(filepath).results
     teams = results.teams
     players = [player.name for player in player_generator(teams)]
@@ -91,12 +84,17 @@ def main(filepath: str):
         player.name: (player.elo, player.matches) for player in player_generator(teams)
     }
     stored_data.set_players_match_data(new_player_data)
-    storage.write()
+    google_storage.write()
     # save_match_played(storage, results) # no need anymore
-    os.chdir(cwd)
 
 
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     args = parse_argument()
-    main(**vars(args))
+    if args.storage == 'football-rating':
+        key = input('Update main storage? [y]:')
+        if key.lower() != 'y':
+            print('Main storage guard abort')
+            sys.exit(1)
+    os.chdir(sys.path[0])
+    update_rating(**vars(args))

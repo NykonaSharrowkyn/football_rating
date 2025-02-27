@@ -1,6 +1,7 @@
 .idea
 football_rating/*/*.txt
 football_rating/*/202*/*.txt
+football_rating/token.txt
 *.json
 .venv
 __pycache__
