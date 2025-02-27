@@ -6,7 +6,9 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, InlineQueryHandler, MessageHandler, filters, ContextTypes
 from telegram.ext import CallbackQueryHandler
 
-TOKEN: Final = '7559403310:AAEzs28ytc4YI58aJhhoEWPT1JL43x00pUk'
+from pathlib import Path
+
+TOKEN: Final = Path('token.txt').read_text()
 BOT_USERNAME: Final = '@FootballEloBot'
 DUMMY: Final = 'Спасибо! Бот сейчас в разработке!'
 
