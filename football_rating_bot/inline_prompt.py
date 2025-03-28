@@ -1,6 +1,4 @@
 from enum import Enum
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-from typing import List
 
 class InlineAction(Enum):
     UNKNOWN = 0,
@@ -21,7 +19,7 @@ class InlinePrompt:
     prompts = {
         'action': 'Input action:', 
         'dummy': 'Unknown error',               
-        'max_count': 'Input max participants (max 55)',
+        'max_count': 'Input max participants (max 55) [# - end symbols]',
         'name': 'Input name [# - end symbol]',
         'ready': 'Click here',
         'no_data': 'Input all required data'
@@ -46,20 +44,12 @@ class InlinePrompt:
             return InlinePrompt.descriptions[self._prompt_key()]
         except KeyError:
             return ''
-    
-    def markup(self, id: str) -> InlineKeyboardMarkup | None:
-        if not self.check_data():
-            return None
-        keyboard = [
-            InlineKeyboardButton('Участвовать / Отмена', callback_data='1|' + id)
-        ]
-        
 
     def parse(self, text: str):
         if not text:
             return
         self.input['action'] = text[0]
-        parts = text[1:].split('#')
+        parts = text[1:].split('#')[:-1]
         self.input.update(dict(zip(InlinePrompt.data_keys[1:], parts)))
         self._convert_action()
         self._convert_max()
