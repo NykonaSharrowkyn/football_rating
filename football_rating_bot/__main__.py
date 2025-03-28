@@ -1,11 +1,14 @@
 from .football_rating_bot import FootballRatingBot
-from .config import TOKEN_PATH
+from .config import TOKEN_PATH, DB_PATH
 
 from pathlib import Path
 
-import asyncio
+# import asyncio
 
-bot = FootballRatingBot(Path(TOKEN_PATH).read_text())
+bot = FootballRatingBot(
+    token=Path(TOKEN_PATH).read_text(), 
+    db_path=DB_PATH
+)
 bot.run()
 # try:
 #     asyncio.run(bot.start())
