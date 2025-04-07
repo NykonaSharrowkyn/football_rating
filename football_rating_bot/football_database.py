@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from sqlalchemy import create_engine, Column, UUID, String
+from sqlalchemy import create_engine, Column, UUID, String, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -16,9 +16,15 @@ Base = declarative_base()
 class Event(Base):
     __tablename__ = 'events'
     evnet_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    owner_id = Column(String)
+    owner_id = Column(Integer)
     message_id = Column(String)
     event_name = Column(String)
+
+# class Player(Base):
+#     __tablename__ = 'players'
+#     player_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+#     user_id = Column(Integer)
+#     user
 
 class FootballDatabase:
     def __init__(self, db_path: str):

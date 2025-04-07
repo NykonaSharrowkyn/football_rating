@@ -5,3 +5,4 @@ football_rating/token.txt
 *.json
 .venv
 __pycache__
+*.db
