@@ -1,4 +1,5 @@
 import datetime
+import math
 import numpy as np
 from collections import Counter
 from dataclasses import dataclass
@@ -38,8 +39,8 @@ class Team:
         return self.name[0].lower()
 
 
-def elo_update(player: Player, actual: float, expected: float):
-    player.elo = round(player.elo + (50/(1 + player.matches/300)) * (actual - expected))
+def elo_update(player: Player, actual: float, expected: float, point_factor: float= 1.):
+    player.elo = round(player.elo + (50/(1 + player.matches/300)) * point_factor * (actual - expected))
 
 
 @dataclass
@@ -65,10 +66,14 @@ class Match:
             return
         ep1 = self.team1.expected_score(self.team2)
         ep2 = self.team2.expected_score(self.team1)
+        if self.result == 0.:
+            p = 1.
+        else:
+            p = 1 + 4*(math.log10(abs(self.goals1 - self.goals2)))
         for player in self.team1.players:
-            elo_update(player, self.result, ep1)
+            elo_update(player, self.result, ep1, p)
         for player in self.team2.players:
-            elo_update(player, 1 - self.result, ep2)
+            elo_update(player, 1 - self.result, ep2, p)
 
 
 class MatchDay:
