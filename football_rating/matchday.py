@@ -69,7 +69,7 @@ class Match:
         if self.result == 0.:
             p = 1.
         else:
-            p = 1 + 4*(math.log10(abs(self.goals1 - self.goals2)))
+            p = 1 + (math.log10(abs(self.goals1 - self.goals2))**3)
         for player in self.team1.players:
             elo_update(player, self.result, ep1, p)
         for player in self.team2.players:
