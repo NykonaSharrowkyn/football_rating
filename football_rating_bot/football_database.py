@@ -3,11 +3,11 @@ import uuid
 
 from functools import wraps
 
-from sqlalchemy import create_engine, Column, UUID, String, Integer, ForeignKey
+from sqlalchemy import create_engine, Column, UUID, String, Integer, ForeignKey, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 
-from typing import Callable, List
+from typing import Callable, List, Tuple
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -29,7 +29,6 @@ class Event(Base):
 class Player(Base):
     __tablename__ = 'players'
     player_id = Column(UUID(as_uuid=True), primary_key=True)
-    player_name = Column(String)
     telegram_id = Column(Integer)
     chat_id = Column(Integer, default=0)
     elo = Column(Integer, default=1250)
@@ -49,6 +48,7 @@ class EventPlayer(Base):
     __tablename__ = 'event_players'
     player_id = Column(UUID, ForeignKey('players.player_id'), primary_key=True)
     event_id = Column(UUID, ForeignKey('events.event_id'), primary_key=True)
+    player_name = Column(String)
     
     event = relationship("Event", back_populates='players')
     player = relationship("Player", back_populates='events')
@@ -103,8 +103,11 @@ class FootballDatabase:
     def add_event_message(self, inline_id: uuid.UUID, message_id: uuid.UUID, event_id: uuid.UUID) -> uuid.UUID | None:
         return self._add_event_message(inline_id, message_id, event_id)
 
-    def add_player(self, name: str, telegram_id: int, elo: int) -> uuid.UUID | None:
-        return self._add_player(name, telegram_id, elo)
+    def add_player(self, telegram_id: int, elo: int) -> uuid.UUID | None:
+        return self._add_player(telegram_id, elo)
+    
+    def get_elo_range(self) -> Tuple[int, int]:
+        return self._get_elo_range()    
     
     def get_event(self, event_id: uuid.UUID) -> dict | None:
         return self._get_event(event_id)
@@ -113,7 +116,7 @@ class FootballDatabase:
         return self._get_event_id(inline_id)
     
     def get_messages(self, event_id: uuid.UUID) -> List[str] | None:
-        return self._get_messages(event_id)
+        return self._get_messages(event_id)    
   
     def get_player_id(self, telegram_id: int) -> uuid.UUID | None:
         return self._get_player_id(telegram_id)
@@ -124,8 +127,8 @@ class FootballDatabase:
     # def is_player_registered(self, player_id, event_id) -> bool:
     #     return self._is_player_registered(player_id, event_id)
 
-    def register_player(self, player_id: uuid.UUID, event_id: uuid.UUID) -> bool | None:
-        return self._register_player(player_id, event_id)
+    def register_player(self, player_id: uuid.UUID, event_id: uuid.UUID, player_name: str) -> bool | None:
+        return self._register_player(player_id, event_id, player_name)
     
     def registered_players(self, event_id: uuid.UUID) -> bool | None:
         return self._registered_players(event_id)
@@ -147,6 +150,9 @@ class FootballDatabase:
 
     def unregister_player(self, player_id: uuid.UUID, event_id: uuid.UUID) -> bool | None:                
         return self._unregister_player(player_id, event_id)
+    
+    def update_player(self, player_id: uuid.UUID, elo: int):
+        return self._update_player(player_id, elo)
 
     # def update_event_text(self, event_id: uuid.UUID, new_text: str) -> None:
     #     return self._update_event_text(event_id, new_text)    
@@ -168,16 +174,21 @@ class FootballDatabase:
         return inline_id    
     
     @with_commit
-    def _add_player(self, session: Session, name: str, telegram_id: int, elo: int) -> uuid.UUID | None:
+    def _add_player(self, session: Session, telegram_id: int, elo: int) -> uuid.UUID | None:
         id = uuid.uuid4()
         new_player = Player(
             player_id=id,
-            player_name=name,
             telegram_id=telegram_id,
             elo=elo
         )
         session.add(new_player)
         return id    
+    
+    @with_session
+    def _get_elo_range(self, session: Session) -> Tuple[int, int]:
+        max_elo = int(session.query(func.max(Player.elo)).scalar() or 0)
+        min_elo = int(session.query(func.min(Player.elo)).scalar() or 0) 
+        return (min_elo, max_elo)
     
     @with_session
     def _get_event(self, session: Session, event_id: uuid.UUID) -> dict | None:
@@ -209,8 +220,8 @@ class FootballDatabase:
         return bool(rec)
     
     @with_commit
-    def _register_player(self, session: Session, player_id: uuid.UUID, event_id: uuid.UUID) -> bool | None:
-        link = EventPlayer(player_id=player_id, event_id=event_id)
+    def _register_player(self, session: Session, player_id: uuid.UUID, event_id: uuid.UUID, player_name: str) -> bool | None:
+        link = EventPlayer(player_id=player_id, event_id=event_id, player_name=player_name)
         session.add(link)
         return True
     
@@ -232,6 +243,13 @@ class FootballDatabase:
     #     event = session.query(Event).filter(Event.event_id == event_id).first()
     #     event.event_text = new_text
     #     return new_text
+    
+    @with_commit
+    def _update_player(self, session: Session, player_id: uuid.UUID, elo: int):
+        player = session.query(Player).filter_by(player_id=player_id).first()
+        player.elo = elo
+        return elo
+
     @with_commit
     def _unregister_player(self, session: Session, player_id: uuid.UUID, event_id: uuid.UUID) -> bool | None:                
         link = session.query(EventPlayer).filter_by(player_id=player_id, event_id=event_id).first()
