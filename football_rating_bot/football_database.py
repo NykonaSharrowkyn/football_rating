@@ -1,6 +1,7 @@
 import logging
 import uuid
 
+from enum import IntEnum, unique
 from functools import wraps
 
 from sqlalchemy import create_engine, Column, UUID, String, Integer, ForeignKey, func
@@ -29,8 +30,9 @@ class Event(Base):
 class Player(Base):
     __tablename__ = 'players'
     player_id = Column(UUID(as_uuid=True), primary_key=True)
-    telegram_id = Column(Integer)
-    chat_id = Column(Integer, default=0)
+    telegram_id = Column(Integer, default=0)
+    host_id = Column(Integer, default=0)
+    player_name = Column(String, default='')
     elo = Column(Integer, default=1250)
     matches = Column(Integer, default=0)
 
@@ -49,6 +51,7 @@ class EventPlayer(Base):
     player_id = Column(UUID, ForeignKey('players.player_id'), primary_key=True)
     event_id = Column(UUID, ForeignKey('events.event_id'), primary_key=True)
     player_name = Column(String)
+    register_type = Column(Integer, default=0)
     
     event = relationship("Event", back_populates='players')
     player = relationship("Player", back_populates='events')
@@ -81,7 +84,7 @@ def with_commit(func: Callable):
     def wrapper(self, *args, **kwargs):
         with self.session() as session:
             try:
-                result = func(self, session, *args, **kwargs)
+                result = func(self, *args, session=session, **kwargs)
                 session.commit()
                 return result
             except Exception as e:
@@ -91,14 +94,29 @@ def with_commit(func: Callable):
                 session.rollback()
     return wrapper
 
+@unique
+class RegisterType(IntEnum):
+    MAIN=0,
+    RESERVE=1
+
+    def other(self):
+        return RegisterType.MAIN if self == RegisterType.RESERVE else RegisterType.RESERVE
+
 class FootballDatabase:
     def __init__(self, db_path: str):
         self.engine = create_engine(db_path)
         Base.metadata.create_all(self.engine)
         self.session = sessionmaker(bind=self.engine)
 
-    def add_event(self, event_id: uuid.UUID, owner_id: str, event_title: str) -> uuid.UUID | None:
-        return self._add_event(event_id, owner_id, event_title)    
+    @with_commit
+    def add_event(self, event_id: uuid.UUID, owner_id: str, event_title: str, session=None) -> uuid.UUID | None:
+        new_event = Event(
+            event_id=event_id,
+            owner_id=owner_id,
+            event_title=event_title
+        )
+        session.add(new_event)
+        return event_id 
     
     def add_event_message(self, inline_id: uuid.UUID, message_id: uuid.UUID, event_id: uuid.UUID) -> uuid.UUID | None:
         return self._add_event_message(inline_id, message_id, event_id)
@@ -106,29 +124,41 @@ class FootballDatabase:
     def add_player(self, telegram_id: int, elo: int) -> uuid.UUID | None:
         return self._add_player(telegram_id, elo)
     
+    def add_invited_player(self, host_id: int, player_name: str, elo: int) -> uuid.UUID | None:
+        return self._add_invited_player(host_id, player_name, elo)
+    
     def get_elo_range(self) -> Tuple[int, int]:
         return self._get_elo_range()    
     
     def get_event(self, event_id: uuid.UUID) -> dict | None:
         return self._get_event(event_id)
-   
-    def get_event_id(self, inline_id: uuid.UUID) -> uuid.UUID | None:
-        return self._get_event_id(inline_id)
+    
+    def get_events(self, owner_id: int) -> List[dict] | None:
+        return self._get_events(owner_id)
+      
+    def get_event_by_inline(self, inline_id: uuid.UUID) -> uuid.UUID | None:
+        return self._get_event_by_inline(inline_id)
     
     def get_messages(self, event_id: uuid.UUID) -> List[str] | None:
         return self._get_messages(event_id)    
   
-    def get_player_id(self, telegram_id: int) -> uuid.UUID | None:
-        return self._get_player_id(telegram_id)
+    def get_player_id(self, telegram_id: int, host_id: int = 0, player_name: str = '') -> uuid.UUID | None:
+        return self._get_player_id(telegram_id, host_id, player_name)
     
-    def is_player_registered(self, player_id: uuid.UUID, event_id: uuid.UUID) -> bool:
-        return self._is_player_registered(player_id, event_id)
+    def is_player_registered(self, event_id: uuid.UUID, player_id: uuid.UUID) -> RegisterType | None:
+        return self._is_player_registered(event_id, player_id)
     
     # def is_player_registered(self, player_id, event_id) -> bool:
     #     return self._is_player_registered(player_id, event_id)
 
-    def register_player(self, player_id: uuid.UUID, event_id: uuid.UUID, player_name: str) -> bool | None:
-        return self._register_player(player_id, event_id, player_name)
+    def register_player(
+            self,
+            player_id: uuid.UUID,
+            event_id: uuid.UUID,
+            player_name: str,
+            register_as: RegisterType = RegisterType.MAIN     
+        ) -> bool | None:
+        return self._register_player(player_id, event_id, player_name, register_as)
     
     def registered_players(self, event_id: uuid.UUID) -> bool | None:
         return self._registered_players(event_id)
@@ -158,16 +188,6 @@ class FootballDatabase:
     #     return self._update_event_text(event_id, new_text)    
     
     @with_commit
-    def _add_event(self, session: Session, event_id: uuid.UUID, owner_id: str, event_title: str) -> uuid.UUID | None:
-        new_event = Event(
-            event_id=event_id,
-            owner_id=owner_id,
-            event_title=event_title
-        )
-        session.add(new_event)
-        return event_id    
-    
-    @with_commit
     def _add_event_message(self, session: Session, inline_id: uuid.UUID, message_id: uuid.UUID, event_id: uuid.UUID) -> uuid.UUID | None:
         new_message = Message(inline_id=inline_id, message_id=message_id, event_id=event_id)
         session.add(new_message)
@@ -175,14 +195,26 @@ class FootballDatabase:
     
     @with_commit
     def _add_player(self, session: Session, telegram_id: int, elo: int) -> uuid.UUID | None:
-        id = uuid.uuid4()
+        player_id = uuid.uuid4()
         new_player = Player(
-            player_id=id,
+            player_id=player_id,
             telegram_id=telegram_id,
             elo=elo
         )
         session.add(new_player)
-        return id    
+        return player_id
+    
+    @with_commit
+    def _add_invited_player(self, session: Session, host_id: int, player_name: str, elo: int) -> uuid.UUID | None:
+        player_id = uuid.uuid4()
+        new_player = Player(
+            player_id=player_id,
+            host_id=host_id,
+            player_name=player_name,
+            elo=elo
+        )
+        session.add(new_player)
+        return player_id
     
     @with_session
     def _get_elo_range(self, session: Session) -> Tuple[int, int]:
@@ -196,7 +228,12 @@ class FootballDatabase:
         return model_to_dict(event)
     
     @with_session
-    def _get_event_id(self, session: Session, inline_id: uuid.UUID) -> uuid.UUID | None:
+    def _get_events(self, session: Session, owner_id: int) -> List[dict] | None:
+        events = session.query(Event).filter_by(owner_id=owner_id).all()
+        return [model_to_dict(event) for event in events]
+    
+    @with_session
+    def _get_event_by_inline(self, session: Session, inline_id: uuid.UUID) -> uuid.UUID | None:
         rec = session.query(Message).filter_by(inline_id=inline_id).first()
         if not rec:
             return None
@@ -205,30 +242,54 @@ class FootballDatabase:
     @with_session
     def _get_messages(self, session: Session, event_id: uuid.UUID) -> List[str] | None:
         event = session.query(Event).filter_by(event_id=event_id).first()        
-        return [message.message_id for message in event.messages]
+        return [{'inline_id': message.message_id, } for message in event.messages]
     
     @with_session
-    def _get_player_id(self, session: Session, telegram_id: int) -> uuid.UUID | None:
-        rec = session.query(Player).filter_by(telegram_id=telegram_id).first()
+    def _get_player_id(self, session: Session, telegram_id: int, host_id: int = 0, player_name: str = '') -> uuid.UUID | None:
+        if telegram_id:
+            rec = session.query(Player).filter_by(telegram_id=telegram_id).first()
+        else:
+            rec = session.query(Player).filter_by(host_id=host_id, player_name=player_name).first()
         if not rec:
             return None
         return rec.player_id            
     
     @with_session
-    def _is_player_registered(self, session: Session, player_id: uuid.UUID, event_id: uuid.UUID) -> bool:
+    def _is_player_registered(self, session: Session, event_id: uuid.UUID, player_id: uuid.UUID) -> RegisterType | None:
         rec = session.query(EventPlayer).filter_by(player_id=player_id, event_id=event_id).first()
-        return bool(rec)
+        if not rec:
+            return None
+        return rec.register_type
     
     @with_commit
-    def _register_player(self, session: Session, player_id: uuid.UUID, event_id: uuid.UUID, player_name: str) -> bool | None:
-        link = EventPlayer(player_id=player_id, event_id=event_id, player_name=player_name)
+    def _register_player(
+            self,
+            session: Session,
+            player_id: uuid.UUID,
+            event_id: uuid.UUID,
+            player_name: str,
+            register_as: RegisterType
+        ) -> bool | None:
+        link = EventPlayer(
+            player_id=player_id,
+            event_id=event_id,
+            player_name=player_name,
+            register_type=register_as
+        )        
         session.add(link)
         return True
     
     @with_session
     def _registered_players(self, session: Session, event_id: uuid.UUID) -> List[dict] | None:
-        event = session.query(Event).filter_by(event_id=event_id).first()        
-        return [model_to_dict(player.player) for player in event.players]
+        event_players = session.query(EventPlayer).filter_by(event_id=event_id).order_by(EventPlayer.register_type).all()
+        if not event_players:
+            return None
+        return [
+            {**model_to_dict(player.player), "player_name": player.player_name}
+            for player in event_players
+        ]
+        # event = session.query(Event).filter_by(event_id=event_id).first()        
+        # return [{**model_to_dict(player.player), "player_name": player.player_name } for player in event.players]
     
     # @with_session
     # def is_player_registered(self, session: Session, player_id, event_id) -> bool:
