@@ -89,7 +89,7 @@ def split_teams(filepath: str, storage: str):
         score = team['skill'].mean()
         # team_str = key[0]
         players_str = ', '.join(players)
-        team_list.append(f'{players_str} - средний {score}')
+        team_list.append(f'{players_str} - средний {score:.2f}')
 
     for team in get_teams(team_list):
         print(team)
