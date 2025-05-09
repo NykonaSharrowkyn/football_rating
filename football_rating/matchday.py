@@ -66,7 +66,7 @@ class Match:
             return
         ep1 = self.team1.expected_score(self.team2)
         ep2 = self.team2.expected_score(self.team1)
-        if self.result == 0.:
+        if self.result == 0.5:
             p = 1.
         else:
             p = 1 + (math.log10(abs(self.goals1 - self.goals2))**3)
