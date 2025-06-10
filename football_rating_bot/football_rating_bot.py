@@ -1,9 +1,11 @@
 from .football_database import FootballDatabase, RecordNotFound, AdminRequired
 from football_rating.matchday import DEFAULT_ELO
+from football_rating.text_parser import MatchDayParser
+from football_rating.football_rating_utility import player_generator
 
 from telegram import Update, InputFile
-from telegram.ext import Application, ContextTypes
-from typing import List
+from telegram.ext import Application, ContextTypes, CommandHandler
+from typing import Dict, Tuple
 
 import io
 import logging
@@ -25,6 +27,7 @@ class FootballRatingBot:
     admin_error_text = 'Необходимы права администратора.'
     too_long_error_text = 'Слишком длинное названия/имя (максимум 64 символа).'
     internal_error_text = 'Произошла внутренняя ошибка.'
+    no_user_error_text = 'Пользователь не найден. Попросите его присоединиться.'
     wrong_argument_text = 'Неверный аргумент.'    
     max_len = 64
     max_elo = 3000
@@ -49,7 +52,7 @@ class FootballRatingBot:
         except ArgumentLengthException:
             await update.message.reply_text(self.too_long_error_text)                        
         except AdminRequired:
-            await update.message.reply_text(self.admin_error_text)            
+            await update.message.reply_text(self.admin_error_text)
         except ValueError:
             await update.message.reply_text(self.wrong_argument_text)
         except Exception as e:
@@ -70,14 +73,13 @@ class FootballRatingBot:
         except (ValueError, IndexError):
             await update.message.reply_text(self.wrong_argument_text)
         except RecordNotFound:
-            await update.message.reply_text('Пользователь не найден. Попросите его присоединиться.')
+            await update.message.reply_text(self.no_user_error_text)
         except Exception as e:
             await update.message.reply_text(self.internal_error_text)
 
     async def export(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
-            ratings = self.db.get_ratings(update.effective_user.id)
-            df = pd.DataFrame(ratings)
+            df = self.db.get_players(update.effective_user.id)
             csv_buffer = io.StringIO()
             df.to_csv(csv_buffer, index=False)
             csv_buffer.seek(0)
@@ -85,6 +87,13 @@ class FootballRatingBot:
                 document=InputFile(csv_buffer, filename='players_elo.csv'),
                 caption='Рейтинг игроков'
             )
+        except Exception as e:
+            await update.message.reply_text(self.internal_error_text)
+
+    async def groups(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            groups = self.db.get_groups(update.effective_user.id)
+            await update.message.reply_text(' '.join(groups))
         except Exception as e:
             await update.message.reply_text(self.internal_error_text)
 
@@ -103,6 +112,58 @@ class FootballRatingBot:
             '/start [Имя группы] - запуск или переключение между группами участников\n'
         )
         await update.message.reply_text(text)
+
+    async def join(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            args = self._get_argument(update.message.text).split(' ')
+            if args[0] not in ('on', 'off'):
+                raise ValueError()
+            if args[1].startswith('@'):
+                raise ValueError
+            state = args[0] == 'on'
+            name = args[1][1:]
+            self.db.join_to_user(update.effective_user, name, state)
+        except (IndexError, KeyError):
+            await update.message.reply_text(self.wrong_argument_text)
+        except RecordNotFound:
+            await update.message.reply_text(self.no_user_error_text)
+        except Exception as e:
+            await update.message.reply_text(self.internal_error_text)
+
+    async def rename(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            args = self._get_argument(update.message.text).split('')
+            old_name = args[0].lstrip().rstrip()
+            new_name = args[1].lstrip().rstrip()
+            self.db.rename_player(update.effective_user, old_name, new_name)
+        except (IndexError, KeyError):
+            await update.message.reply_text(self.wrong_argument_text)
+        except AdminRequired:
+            await update.message.reply_text(self.admin_error_text)            
+        except RecordNotFound:
+            await update.message.reply_text('Игрок с таким именем не найден')
+        except Exception as e:
+            await update.message.reply_text(self.internal_error_text)
+
+    async def results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            results = MatchDayParser(text=update.message.text).results
+            all_players = self._get_players_dict(self.db.get_players(update.effective_user.id))
+            player_names = [player.name for player in player_generator(results.teams)]
+            diff = set(player_names) - set(all_players)
+            if diff:
+                text = 'Добавьте игроков:\n' + '\n'.join(player_names)
+                await update.message.reply_text(text)
+                return
+            for player in player_generator(results.teams):
+                elo, matches = all_players[player.name]
+                player.elo = elo
+                player.matches = matches
+            results.update_players()
+            new_data = {player.name : (player.elo, player.matches) for player in player_generator(results.teams)}
+            self.db.update_players(update.effective_user.id, new_data)
+        except Exception as e:
+            await update.message.reply_text(self.internal_error_text)
     
     def run(self):
         self.application.add_handler(CommandHandler("add", self.add))
@@ -112,6 +173,9 @@ class FootballRatingBot:
         allowed_updates=['message']
         self.application.run_polling(poll_interval=2, allowed_updates=allowed_updates)
 
+    async def split(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        pass
+    
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         try:
@@ -129,6 +193,7 @@ class FootballRatingBot:
             await update.message.reply_text(self.internal_error_text)
 
     def _get_argument(self, text: str, max_len: int | None = None):
+        text = text.si
         index = text.find(' ')
         if index == -1:
             return ''
@@ -137,4 +202,9 @@ class FootballRatingBot:
             raise ArgumentLengthException()
         return arg
 
+    def _get_players_dict(self, df: pd.DataFrame) -> Dict[str, Tuple[int, int]]:
+        return {
+            row["name"]: (row["elo"], row["matches"])
+            for _, row in df.iterrows()
+        }
         

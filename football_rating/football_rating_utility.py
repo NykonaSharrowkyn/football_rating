@@ -60,7 +60,7 @@ def update_rating(filepath: str, storage: str):
     )
     google_storage.update_time_stats()
     stored_data = google_storage.data
-    results = text_parser.MatchDayFile(filepath).results
+    results = text_parser.MatchDayParser(filepath=filepath).results
     teams = results.teams
     players = [player.name for player in player_generator(teams)]
     stored_players = stored_data.get_players_match_data_dict(players)

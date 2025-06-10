@@ -1,10 +1,10 @@
 import logging
-import uuid
+import pandas as pd
 
 from enum import IntEnum, unique
 from functools import wraps
 
-from sqlalchemy import create_engine, Column, UUID, String, Integer, ForeignKey, func, exists, desc
+from sqlalchemy import create_engine, Column, UUID, String, Integer, ForeignKey, func, exists, desc, delete
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 
@@ -34,6 +34,7 @@ class Player(Base):
     player_id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String)
     elo = Column(Integer)
+    matches = Column(Integer)
     owner_id = Column(Integer, ForeignKey('owners.id'))    
     group_id = Column(Integer, ForeignKey('groups.id'))    
 
@@ -118,13 +119,25 @@ class FootballDatabase:
         return self._add_player(owner_id, name, elo)
 
     def add_user(self, user_id: int, user_name: str):
-        return self._add_user(user_id, user_name)        
+        return self._add_user(user_id, user_name)    
 
-    def get_ratings(self, owner_id: int):
-        return self._get_ratings(self, owner_id)
+    def get_groups(self, owner_id: int) -> List[str]:
+        return self._get_groups(owner_id)
+
+    def get_players(self, owner_id: int) -> pd.DataFrame:
+        return self._get_players(self, owner_id)
+    
+    def join_to_user(self, user_id: int, name: str, state: bool):
+        return self._join_to_user(user_id, name, state)
+    
+    def rename_player(self, owner_id: int, old_name: str, new_name: str):
+        return self._rename_player(owner_id, old_name, new_name)
 
     def select_group(self, owner_id: int, name: str):
         return self._select_group(owner_id, name)
+    
+    def update_players(self, owner_id: int, new_data: Dict[str, Tuple[int, int]]):
+        return self._update_players(owner_id, new_data)
 
     @with_commit
     def _add_admin(self, owner_id: int, name: str, state: bool, session: Session):
@@ -141,7 +154,6 @@ class FootballDatabase:
             user.role = UserRole.USER
         
         
-
     @with_commit
     def _add_player(self, owner_id: int, name: str, elo: int, session: Session):
         owner_id = self._change_user(owner_id, UserRole.ADMIN, session)
@@ -171,15 +183,43 @@ class FootballDatabase:
         return user.owner_id
     
     @with_session
-    def _get_ratings(self, owner_id: int, session: Session) -> Dict[str, int]:
+    def _get_groups(self, owner_id: int, session: Session) ->  List[str]:
+        owner_id = self._change_user(owner_id, UserRole.USER, session)
+        groups = session.query(Group).filter_by(owner_id=owner_id).all()
+        return [group.name for group in groups]    
+    
+    @with_session
+    def _get_players(self, owner_id: int, session: Session) -> pd.DataFrame:
         owner_id = self._change_user(owner_id, UserRole.USER, session)
         players = (
             session.query(Player)
             .join(Owner)
             .filter(Player.owner_id == owner_id, Player.group_id == Owner.active_id)
         ).order_by(desc(Player.elo)).all()
-        return [model_to_dict(player) for player in players]
+        return pd.DataFrame([model_to_dict(player) for player in players])
+    
+    @with_commit
+    def _join_to_user(self, user_id: int, name: str, state: bool, session: Session):
+        owner = session.query(User).filter_by(user_name=name).first()
+        if not owner:
+            raise RecordNotFound()
+        if state:
+            if session.query(exists().where(JoinUser.user_id == user_id, JoinUser.owner_id == owner.user_id)):
+                return
+            new_user = JoinUser(user_id=user_id, owner_id=owner.user_id, role=UserRole.USER)
+            session.add(new_user)
+        else:
+            stmt = delete(JoinUser).where(JoinUser.user_id == user_id, JoinUser.owner_id == owner.user_id)
+            session.execute(stmt)
 
+    @with_commit
+    def _rename_player(self, owner_id: int, old_name: str, new_name: str, session: Session):
+        owner_id = self._change_user(owner_id, UserRole.ADMIN, session)
+        owner = session.query(Owner).filter_by(owner_id=owner_id).first()
+        player = session.query(Player).filter_by(owner_id=owner_id, group_id=owner.active_id, name=old_name).first()
+        if not player:
+            raise RecordNotFound()
+        player.name = new_name
 
     @with_commit
     def _select_group(self, owner_id: int, name: str, session: Session):
@@ -193,3 +233,15 @@ class FootballDatabase:
             session.add(new_group)
         session.commit()
         new_owner.active_id = new_group.id
+
+    @with_commit
+    def _update_players(self, owner_id: int, new_data: Dict[str, Tuple[int, int]], session: Session):
+        owner_id = self._change_user(owner_id, UserRole.ADMIN, session)
+
+        owner = session.query(Owner).filter_by(owner_id=owner_id).first()
+
+        for name in new_data:
+            elo, mathces = new_data[name]
+            player = session.query(Player).filter_by(owner_id=owner_id, group_id=owner.active_id).first()
+            player.elo = elo
+            player.matches = mathces

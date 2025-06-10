@@ -50,15 +50,20 @@ def check_new_players(players: List[str], stored: List[str]):
 
 
 @dataclass
-class MatchDayFile:
-    filepath: str
+class MatchDayParser:
+    text: str = ''
+    filepath: str = ''
     results: MatchDay = MatchDay([], [])
 
     def __post_init__(self):
-        self.read(self.filepath)
+        if not self.text:
+            lines = read_lines(self.filepath)
+            self.parse(lines)
+        else:
+            lines = self.text.split('\n')
+            self.parse(lines)
 
-    def read(self, filepath):
-        lines = read_lines(filepath)
+    def parse(self, lines):
         index = lines.index('')
         team_lines = lines[:index]
         result_lines = lines[index + 1:]
@@ -87,11 +92,11 @@ class PlayersFile:
         while not re.match(r'\s*\d', lines[0]):
             lines.pop(0)
         split_words = [
+            ' б/а',
+            ' ба',
             ' вместо',
             ' без абика',
             ' абик',
-            ' б/а',
-            ' ба',
             ' аб'
         ]
         reg = re.compile(r'\d+\s*\.\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
