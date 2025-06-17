@@ -1,5 +1,6 @@
 import pandas as pd
 import pygsheets
+import pygsheets.client
 
 from players_data import PlayersStorageData
 
@@ -12,10 +13,14 @@ from typing import Any, Tuple
 @dataclass
 class Storage(ABC):
     data: PlayersStorageData = PlayersStorageData()
-    dt: date = date.today()
 
     def __post_init__(self):
+        self.open()
         self.read()
+
+    @abstractmethod
+    def open(self):
+        pass
 
     @abstractmethod
     def read(self):
@@ -80,15 +85,19 @@ class CsvTextFileStorage(FileStorage):
         # df.columns = ['Rating', 'Matches']
         # df.to_csv(self.filepath)
 
-
 @dataclass
 class GSheetStorage(Storage):
     service_file: str | None = None
-    file_name: str = 'football-rating'
     sheet_name: str = 'rating'
-    gc: Any = None
-    wb: Any = None
-    wks: Any = None
+    file_name: str | None = None
+    url: str | None = None
+    gc: pygsheets.client.Client | None = None
+    wb: pygsheets.Spreadsheet | None = None
+    wks: pygsheets.Worksheet | None= None
+
+    def __post_init__(self):
+        self.gc = pygsheets.authorize(service_file=self.service_file)
+        return super().__post_init__()
 
     def check_sheet(self, name: str):
         try:
@@ -96,12 +105,32 @@ class GSheetStorage(Storage):
         except pygsheets.exceptions.WorksheetNotFound:
             wks = self.wb.add_worksheet(name)
         return wks
+    
+    def open(self):
+        if self.url:
+            self.wb = self.gc.open_by_url(self.url)
+        elif self.file_name:
+            try:
+                self.wb = self.gc.open(self.file_name)
+            except pygsheets.SpreadsheetNotFound:
+                self.wb = self.gc.create(self.file_name)
+                self.wks = self.wb.add_worksheet(self.sheet_name)
+                self.wks.update_value('A1', 'Name')
+                self.wks.update_value('B1', 'Rating')
+                self.wks.update_value('C1', 'Matches')
+                self.wks.update_value('D1', 'Prev rating')
+                self.wks.update_value('E1', 'Change')
+                self._update_color(self.wks, ('A1', 'E1'), (0.0, 0.8, 0.0))
+                self.url = self.wb.url
+        else:
+            raise ValueError('No url or name provided')
+        self.wks = self.wb.worksheet_by_title(self.sheet_name)
+
 
     def read(self):
-        self.gc = pygsheets.authorize(service_file=self.service_file)
         self.wb = self.gc.open(self.file_name)
         self.wks = self.wb.worksheet_by_title('rating')
-        df = self.wks.get_as_df()
+        df: pd.DataFrame = self.wks.get_as_df()
         df.set_index('Name', inplace=True)
         self.data.df = df
         self.data.sort()
@@ -117,24 +146,24 @@ class GSheetStorage(Storage):
         self._update_color(self.wks, ("A1", "E1"), (0.0, 0.8, 0.0))
 
     def write_sheet(self, sheet_name, df: pd.DataFrame):
-        wks = self.wb.worksheet_by_title(sheet_name)
+        wks: pygsheets.Worksheet = self.wb.worksheet_by_title(sheet_name)
         wks.set_dataframe(df, (1, 1))
         end = chr(ord('A') + df.shape[1] - 1) + '1'
         self._update_color(wks, ("A1", end), (0.8, 0.8, 0.8))
 
-    def update_time_stats(self):
-        year = self.dt.strftime("%Y")
+    def update_time_stats(self, dt: datetime):
+        year = dt.strftime("%Y")
         wks = self.check_sheet(year)
         old_df = wks.get_as_df(numerize=False)
         new_df = self.data.get_players_rating().reset_index()
         column_format = "%m.%Y"
-        column_name = self.dt.strftime(column_format)
+        column_name = dt.strftime(column_format)
         new_df.columns = ['Name', column_name]
         if not old_df.empty:
             old_df.set_index('Name', inplace=True)
             old_df = old_df.astype(int)
             last_month = datetime.strptime(str(old_df.columns[-1]), column_format).date()
-            current_month = self.dt.replace(day=1)
+            current_month = dt.replace(day=1).date()
             if not current_month > last_month:
                 return
             new_df.set_index('Name', inplace=True)
