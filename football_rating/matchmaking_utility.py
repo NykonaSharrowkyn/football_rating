@@ -19,7 +19,7 @@ def parse_argument() -> argparse.Namespace:
         description='File based football matchmaker'
     )
     parser.add_argument('filepath', help='text file with player names')
-    parser.add_argument('-s', '--storage', default='football-rating-test')
+    parser.add_argument('-s', '--storage', default='football-rating')
     return parser.parse_args()
 
 
@@ -66,10 +66,11 @@ def test_expected(players_list: list, players_data: dict):
 
 def split_teams(filepath: str, storage: str):
     players = text_parser.PlayersFile(filepath).players
-    all_data = data_storage.GSheetStorage(
+    storage = data_storage.GSheetStorage(
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name=storage
-    ).data
+    )
+    all_data = storage.data
     players_data = all_data.get_players_match_data_dict(players)
     stored_players = list(players_data.keys())
     text_parser.check_new_players(players, stored_players)

@@ -1,5 +1,3 @@
-import datetime
-
 import pandas as pd
 
 import matchday
@@ -11,6 +9,7 @@ import argparse
 import os
 import sys
 
+from datetime import datetime
 from typing import List, Dict, Tuple
 
 
@@ -20,7 +19,7 @@ def parse_argument() -> argparse.Namespace:
         description='File based football elo rating program'
     )
     parser.add_argument('filepath', help='text file with match results')
-    parser.add_argument('-s', '--storage', default='football-rating-test')
+    parser.add_argument('-s', '--storage', default='football-rating')
     return parser.parse_args()
 
 
@@ -58,7 +57,7 @@ def update_rating(filepath: str, storage: str):
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name=storage
     )
-    google_storage.update_time_stats()
+    google_storage.update_time_stats(datetime.today())
     stored_data = google_storage.data
     results = text_parser.MatchDayParser(filepath=filepath).results
     teams = results.teams
