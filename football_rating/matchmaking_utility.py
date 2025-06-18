@@ -65,7 +65,7 @@ def test_expected(players_list: list, players_data: dict):
 
 
 def split_teams(filepath: str, storage: str):
-    players = text_parser.PlayersFile(filepath).players
+    players = text_parser.PlayersText(filepath).players
     storage = data_storage.GSheetStorage(
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name=storage
