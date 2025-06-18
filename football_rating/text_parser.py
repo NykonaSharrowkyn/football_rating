@@ -80,15 +80,17 @@ class MatchDayParser:
 
 
 @dataclass
-class PlayersFile:
-    filepath: str
+class PlayersText:
+    filepath: str = None,
+    text: str = None
     players: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        self.read(self.filepath)
+        if not self.text:
+            self.text = read_lines(self.filepath)
+        self.read(self.text)
 
-    def read(self, filepath: str):
-        lines = read_lines(filepath)
+    def read(self, lines: str):
         while not re.match(r'\s*\d', lines[0]):
             lines.pop(0)
         split_words = [

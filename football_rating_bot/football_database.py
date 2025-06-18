@@ -71,11 +71,11 @@ def with_commit(func: Callable):
 class RecordNotFound(LookupError):
     pass
 
-# class OwnerExists(LookupError):
-#     pass
-
-class AdminRequired(PermissionError):
+class OwnerExists(LookupError):
     pass
+
+# class AdminRequired(PermissionError):
+#     pass
 
 @unique
 class UserRole(IntEnum):
@@ -83,7 +83,9 @@ class UserRole(IntEnum):
     ADMIN = 1,
     USER = 2
 
-class FootballDatabase:
+class FootballDatabase:  
+    NOT_FOUND = 'Пользователь {} не найден'
+    
     def __init__(self, db_path: str):
         self.engine = create_engine(db_path)
         Base.metadata.create_all(self.engine)
@@ -94,3 +96,72 @@ class FootballDatabase:
     
     def __exit__(self, exc_type, sxc_val, exc_tb):
         pass
+
+    def add_owner(self, id: int, url: str):
+        self._add_owner(id, url)
+       
+    def get_owner(self, id: int) -> Owner:
+        owner = self._get_owner(id)
+        if not owner:
+            raise RecordNotFound(self.NOT_FOUND.format(id))
+        return owner
+    
+    def get_user(self, id: int) -> User:
+        user = self._get_user(id)
+        if not user:
+            raise RecordNotFound(self.NOT_FOUND.format(id))
+        return user
+    
+    def get_user_by_name(self, name: str) -> User:
+        user = self._get_user_by_name(name)
+        if not user:
+            raise RecordNotFound(self.NOT_FOUND.format(name))
+        return user    
+    
+    def is_admin(self, id: int, url: str) -> bool:
+        return self._is_admin(id, url)
+    
+    def update_admin(self, admin_id: int, url: str, state: bool):
+        self._update_admin(admin_id, url, state)
+
+    def update_user(self, id: int, name: str, url: str):
+        self._update_user(id, name, url)
+
+    @with_commit
+    def _add_owner(self, id: int, url: str, session: Session):
+        owner = session.query(Owner).filter_by(id=id).first()
+        if owner:
+            raise OwnerExists(f'Владелец {id} уже существует')
+        owner = Owner(id=id, url=url)
+        session.add(owner)
+
+    @with_session
+    def _get_owner(self, id: int, session: Session):
+        return session.query(Owner).filter_by(id=id).first()
+    
+    @with_session
+    def _get_user(self, id: int, session: Session):
+        return session.query(User).filter_by(id=id).first()
+    
+    @with_session
+    def _get_user_by_name(self, name: str, session: Session):
+        return session.query(User).filter_by(name=name).first()
+    
+    @with_session
+    def _is_admin(self, id: int, url: str, session: Session) -> bool:
+        return session.query(User).filter_by(id=id, url=url).first() is not None
+    
+    @with_commit
+    def _update_admin(self, admin_id: int, url: str, state: bool, session: Session):
+        admin = session.query(Admin).filter_by(id=admin_id, url=url).first()
+        if state and not admin:
+            admin = Admin(id=admin_id, url=url)
+            session.add(admin)
+        elif not state and admin:
+            session.delete(admin)
+
+    @with_commit
+    def _update_user(self, id: int, name: str, url: str, session: Session):
+        user = User(id=id, name=name, url=url)
+        session.merge(user)
+        session.commit()

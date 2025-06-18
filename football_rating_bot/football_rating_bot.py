@@ -1,7 +1,7 @@
 from .football_database import FootballDatabase, UserRole, AdminRequired, RecordNotFound
 from football_rating.data_storage import GSheetStorage
-from football_rating.matchday import DEFAULT_ELO
-from football_rating.text_parser import MatchDayParser
+from football_rating.matchmaking import MatchMaking
+from football_rating.text_parser import MatchDayParser, PlayersText
 from football_rating.football_rating_utility import player_generator
 
 from googleapiclient.discovery import build
@@ -29,11 +29,13 @@ logging.getLogger('telegram.ext').setLevel(logging.WARNING)
 class ArgumentLengthException(Exception):
     pass
 
-class PlayerNotFound(Exception):
+class PlayersNotFound(Exception):
+    pass
+
+class AdminRequired(PermissionError):
     pass
 
 class FootballRatingBot:
-    admin_error_text = 'Необходимы права администратора.'
     internal_error_text = 'Произошла внутренняя ошибка.'
     no_user_error_text = 'Пользователь не найден. Попросите его присоединиться.'
     wrong_argument_text = 'Неверный аргумент.'    
@@ -56,6 +58,7 @@ class FootballRatingBot:
     async def admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE)            :
         context.user_data[self.gmail_key] = False
         user = update.effective_user
+        answer = self.internal_error_text
         try:
             args = self._get_argument(update.message.text).split(' ')
             state = args[0].lower()
@@ -69,12 +72,14 @@ class FootballRatingBot:
             owner = self.db.get_owner(user.id)
             admin = self.db.get_user_by_name(name)
             self.db.update_admin(admin.id, owner.url, state)
+            answer = 'Права успешно обновлены'
         except (ValueError, IndexError):
-            await update.message.reply_text(self.wrong_argument_text)
-        except LookupError as e:
-            await update.message.reply_text(e)
+            answer = self.wrong_argument_text
+        except RecordNotFound as e:
+            answer = f'{str(e)}\nПользователям необходимо написать боту.'
         except Exception as e:
-            await update.message.reply_text(self.internal_error_text)
+            logger.debug(str(e))
+        await update.message.reply_text(answer)
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data[self.gmail_key] = False
@@ -91,6 +96,7 @@ class FootballRatingBot:
     async def message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):        
         if not context.user_data[self.gmail_key]:
             return
+        answer = self.internal_error_text
         try:
             mail = update.message.text
             if not re.fullmatch(r'^[a-zA-Z0-9._%+-]+@gmail\.com$', mail):
@@ -110,12 +116,12 @@ class FootballRatingBot:
         except ValueError as e:
             answer = str(e)
         except Exception as e:
-            answer = self.internal_error_text
+            logger.debug(str(e))
         await update.message.reply_text(answer)
 
     async def results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data[self.gmail_key] = False
-        answer = 'Результаты успешно обновлены'
+        answer = self.internal_error_text
         user = update.effective_user
         try:            
             user = self.db.get_user(user.id)
@@ -129,9 +135,7 @@ class FootballRatingBot:
             teams = results.teams
             players = [player.name for player in player_generator(teams)]
             stored_players = stored_data.get_players_match_data_dict(players)
-            diff = set(players) - set(stored_players.keys())
-            if diff:
-                raise PlayerNotFound('\n'.join(diff))
+            self._check_players(players, stored_players)
             for player in player_generator(results.teams):
                 elo, matches = stored_players[player.name]
                 player.elo = elo
@@ -143,24 +147,22 @@ class FootballRatingBot:
                 text += f'**{name}**:\nОчки - {points}\nЗабито - {scored}\nПропущено - {conceded}\n'
             await update.message.reply_text(text)
 
-            admin = self.db.get_admin(user.id, user.url)
-            if not admin:
-                raise AdminRequired
-            results.update_players()            
+            if not self.db.is_admin(user.id, user.url):
+                raise AdminRequired('Необходимы права администратора.')
+            results.update_players()
 
             new_player_data = {
                 player.name: (player.elo, player.matches) for player in player_generator(teams)
             }            
             stored_data.set_players_match_data(new_player_data)
             storage.write()
-        except AdminRequired as e:
-            answer = self.admin_error_text
-        except PlayerNotFound as e:
+            answer = 'Результаты успешно обновлены'
+        except PlayersNotFound as e:
             answer = f'Добавьте игроков:\n{str(e)}'
-        except RecordNotFound as e:
+        except (AdminRequired, RecordNotFound) as e:
             answer = str(e)
         except Exception as e:
-            answer = self.internal_error_text
+            logger.debug(str(e))
         await update.message.reply_text(answer)
     
     def run(self):
@@ -173,11 +175,47 @@ class FootballRatingBot:
         self.application.run_polling(poll_interval=2, allowed_updates=allowed_updates)
 
     async def split(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        pass
+        context.user_data[self.gmail_key] = False
+        answer = self.internal_error_text
+        user = update.effective_user
+        try:            
+            args = self._get_argument(update.message.text)
+            players = PlayersText(args).players
+            db_user = self.db.get_user(user.id)
+            storage = GSheetStorage(
+                self.service_file,
+                url=db_user.url
+            )
+            all_data = storage.data
+            players_data = all_data.get_players_match_data_dict(players)
+            stored_players = list(players_data.keys())
+            self._check_players(players, stored_players)
+            df = pd.DataFrame.from_dict(players_data, orient='index').reset_index()
+            df.columns = ['player', 'skill', 'matches']
+            matchmaker = MatchMaking(df, 5)
+            df = matchmaker.optimize()
+            teams = df.groupby(['team'])[['player', 'skill']]
+            team_list = []
+            players_list = []
+            for key, _ in teams:
+                team = teams.get_group(key)
+                players = team['player'].tolist()
+                players_list.append(players)
+                score = team['skill'].mean()
+                # team_str = key[0]
+                players_str = ', '.join(players)
+                team_list.append(f'{players_str} - средний {score:.2f}')
+            answer = '\n'.join(team_list)
+        except (PlayersNotFound, RecordNotFound) as e:
+            answer = str(e)
+        except Exception as e:
+            logger.debug(str(e))
+        await update.message.reply_text(answer)
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data[self.gmail_key] = False
         user = update.effective_user
+        answer = self.internal_error_text
         try:
             url = self._get_argument(update.message.text)
             if not url:      
@@ -185,16 +223,23 @@ class FootballRatingBot:
                 self.db.update_user(user.id, user.name, owner.url)
             else:
                 self.db.update_user(user.id, user.username, url)
-            await update.message.reply_text('Вы успешно присоединились к таблице.')
+            answer = 'Вы успешно присоединились к таблице.'
         except RecordNotFound:
             count = self._get_tables_count()
-            if count >= self.max_tables:
-                await update.message.reply_text('Превышено количество таблиц. Обратитесь к разработчику.')
-                return
-            context.user_data[self.gmail_key] = True
-            await update.message.reply_text('Введите вашу gmail почту, чтобы дать права на редактирование')
-        except Exception:
-            await update.message.reply_text(self.internal_error_text)
+            if count < self.max_tables:
+                context.user_data[self.gmail_key] = True
+                answer = 'Введите вашу gmail почту, чтобы дать права на редактирование (она нигде не сохраняется)'
+            else:
+                answer = 'Превышено количество таблиц. Обратитесь к разработчику.'
+        except Exception as e:
+            logger.debug(str(e))
+        await update.message.reply_text(answer)
+
+    def _check_players(self, players, stored_players):
+        diff = set(players) - set(stored_players)
+        if diff:
+            raise PlayerNotFound('\n'.join(diff))
+        return
 
     def _get_tables_count(self):
         gc = pygsheets.authorize(service_account_file='service_account.json')
