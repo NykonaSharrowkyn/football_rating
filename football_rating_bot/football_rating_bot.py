@@ -1,22 +1,22 @@
-from .football_database import FootballDatabase, UserRole, AdminRequired, RecordNotFound
+from .football_database import FootballDatabase, RecordNotFound
+from .my_config import *
 from football_rating.data_storage import GSheetStorage
 from football_rating.matchmaking import MatchMaking
 from football_rating.text_parser import MatchDayParser, PlayersText
 from football_rating.football_rating_utility import player_generator
 
-from googleapiclient.discovery import build
-import pygsheets
-
-from datetime import datetime
-from enum import IntEnum, unique
-from telegram import Update, InputFile
-from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters
-from typing import Dict, Tuple
-
-import io
 import logging
 import pandas as pd
 import re
+
+from datetime import datetime
+from enum import IntEnum, unique
+from functools import wraps
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+from typing import Dict, Tuple
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(message)s',
@@ -43,22 +43,43 @@ class PlayersNotDivisable(ValueError):
 class BotInteraction(IntEnum):
     NONE=0,
     GMAIL=1,
-    SIZE=2
+    TEAMS=2,
+    PLAYERS=3,
+    ADMIN=4,
+    START=5,
+    URL=6,
+    RESULTS=7
+
+# только для синхронного кода без async
+def bot_command(fn):
+    @wraps(fn)
+    async def wrapper(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        answer = self.INTERNAL_ERROR
+        try:
+            self._clear_context(context)
+            answer = fn(self, update, context)
+        except Exception as e:
+            self._clear_context(context)
+            logger.debug(str(e))
+        await update.message.reply_text(answer, parse_mode='HTML')
+    return wrapper
 
 class FootballRatingBot:
-    internal_error_text = 'Произошла внутренняя ошибка.'
-    no_user_error_text = 'Пользователь не найден. Попросите его присоединиться.'
-    wrong_argument_text = 'Неверный аргумент.'    
-    interaction_key = 'user_input'
-    players_key = 'players'
-    max_len = 64
-    max_elo = 3000
-    max_tables = 50
+    INTERNAL_ERROR = 'Произошла внутренняя ошибка.'
+    NO_USER_ERROR = 'Пользователь не найден. Попросите его присоединиться.'
+    WRONG_ARGUMENT = 'Неверный аргумент.'    
+    INTERACTION_KEY = 'user_input'
+    GMAIL_KEY = 'user_gmail'    
+    USER_KEY = 'user_name'
+    TEAMS_KEY = 'team_size'
+    MAX_LEN = 64
+    MAX_TABLES = 50
+    GMAIL_REGEX = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
 
 
     def __init__(self, token, db_path):
         self.token = token
-        self.service_file = '../football_rating/eternal-delight-433008-q1-1bb6245a61a9.json'
+        self.service_file = SERVICE_FILE
         self.db = FootballDatabase(db_path)
         self.application = Application \
             .builder() \
@@ -66,59 +87,339 @@ class FootballRatingBot:
             .build()
         # TODO: garbage collector
         
-    async def admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE)            :
-        context.user_data[self.interaction_key] = BotInteraction.NONE
+    @bot_command
+    def admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        answer = self.internal_error_text
         try:
-            args = self._get_argument(update.message.text).split(' ')
-            state = args[0].lower()
-            if state != 'on' or state != 'off':
-                raise ValueError()
-            state = state == 'on'
-            name = args[1]
-            if not name.startswith('@'):
-                raise ValueError()
-            name = name[1:]
-            owner = self.db.get_owner(user.id)
-            admin = self.db.get_user_by_name(name)
-            self.db.update_admin(admin.id, owner.url, state)
-            answer = 'Права успешно обновлены'
-        except (ValueError, IndexError):
-            answer = self.wrong_argument_text
-        except RecordNotFound as e:
-            answer = f'{str(e)}\nПользователям необходимо написать боту.'
+            current_user = self.db.get_user(user.id)
+            if self.db.is_admin(user.id, current_user.url):
+                answer = (
+                    'Введите пользователя:\n'
+                    '@username\n'
+                    'user@gmail.com\n (опционально, дать права редактирования)' 
+                )
+                context.user_data[self.INTERACTION_KEY] = BotInteraction.ADMIN
+            else:
+                answer = 'У вас нет прав администратора.'
+        except LookupError:
+            answer = self.NO_USER_ERROR # такого быть не должно
+        return answer
+
+    async def button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:            
+            query = update.callback_query
+            await query.answer()
+            data = update.callback_query.data.lower()
+            if context.user_data[self.INTERACTION_KEY] == BotInteraction.ADMIN:
+                username = context.user_data[self.USER_KEY]
+                gmail = context.user_data[self.GMAIL_KEY]
+                self._set_admin(username, gmail, data == 'on')
+                await query.message.reply_text('Права доступа успешно обновлены.')
+            elif context.user_data[self.INTERACTION_KEY] == BotInteraction.START:
+                callbacks = {
+                    'new' : self._start_new,
+                    'join' : self._join
+                }
+                await callbacks[data](update, context)
         except Exception as e:
             logger.debug(str(e))
-        await update.message.reply_text(answer)
+            await query.message.reply_text(self.INTERNAL_ERROR)
 
-    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data[self.interaction_key] = BotInteraction.NONE
+        # answer = self.INTERNAL_ERROR
+        # query = update.callback_query
+        # try:
+        #     if context.user_data[self.INTERACTION_KEY] != BotInteraction.ADMIN:
+        #         return
+        #     data = query.data.lower()
+        #     username = context.user_data[self.USER_KEY]
+        #     gmail = context.user_data[self.GMAIL_KEY]
+        #     user = self.db.get_user_by_name(username)
+        #     self.db.update_admin(user.id, user.name, data == 'on')
+        #     if gmail:
+        #         user = self.db.get_user(user.id)
+        #         storage = GSheetStorage(
+        #             self.service_file,
+        #             url=user.url
+        #         )
+        #         role = 'writer' if data == 'on' else 'reader'
+        #         storage.wb.share(gmail, role=role, type='user')
+        #     self._clear_context()
+        # except Exception as e:
+        #     logger.debug(str(e))
+        # await context.bot.send_message(chat_id=query.message.chat.id,text=answer)                    
+
+    @bot_command
+    def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text: str = (
             '<b>Список команд:</b>\n'
-            '/admin [on|off] [@user] - дать @user права редактирования своей таблицы\n'
-            '/help - список команд\n'
-            '/results [Результаты] - загрузить результаты\n'
-            '/split [Количество команд] [Список участников] - разбить на команды\n'
-            '/start [Ссылка] - запуск или переключение между группами участников\n'
+            '/admin - дать права редактирования\n'
+            '/help - список команд и формат\n'
+            '/results - загрузить результаты\n'
+            '/split - разбить на команды\n'
+            '/start - запуск или переключение между группами таблицами\n'
         )
-        await update.message.reply_text(text)
+
+        text += (
+            '\n<b>Формат результатов:\n</b>'
+            'Синие: Илья М, Алеша П, Святогор\n'
+            'Красные: Добрыня Н, Микула С, Колыван\n'
+            'Желтые: Змей Г, Соловей Р, Идолище П\n\n'
+            'С 0:0 К\n'
+            'К 2:0 Ж\n'
+            'С 2:0 Ж\n'
+        )
+
+        text += (
+            '\n<b>Формат списка:</b>\n'
+            'Турнир имени Кожаного Мяча:\n'
+            '1. Месси\n'
+            '2. Криштиану Р\n'
+            '3. Рональдиньо\n'
+            '...'
+        )
+        return text
+
 
     async def message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if context.user_data[self.interaction_key] == BotInteraction.GMAIL:
-            await self._message_mail(update, context)
-        elif context.user_data[self.interaction_key] == BotInteraction.SIZE:
-            await self._message_size(update, context)
-        return
+        try:
+            callbacks = {
+                BotInteraction.GMAIL : self._message_gmail,
+                BotInteraction.ADMIN : self._message_admin,
+                BotInteraction.TEAMS : self._message_teams,
+                BotInteraction.PLAYERS: self._message_players,
+                BotInteraction.RESULTS: self._message_results,
+                BotInteraction.URL: self._message_url
+            }
+            await callbacks[context.user_data[self.INTERACTION_KEY]](update, context)
+        except Exception as e:
+            logger.debug(str(e))
+            await update.message.reply_text(self.INTERNAL_ERROR)
 
-    async def results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data[self.interaction_key] = BotInteraction.NONE
-        answer = self.internal_error_text
+    @bot_command
+    def results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.RESULTS
+        return 'Введите результаты по шаблону'
+    
+    def run(self):
+        self.application.add_handler(CommandHandler("admin", self.admin))
+        self.application.add_handler(CommandHandler("help", self.help))
+        self.application.add_handler(CommandHandler("results", self.results))
+        self.application.add_handler(CommandHandler("start", self.start))
+        self.application.add_handler(CommandHandler("split", self.split))
+        self.application.add_handler(CallbackQueryHandler(self.button))
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, self.message))
+
+
+        allowed_updates=['message', 'callback_query']
+        self.application.run_polling(poll_interval=2, allowed_updates=allowed_updates)
+
+    @bot_command
+    def split(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.TEAMS
+        return 'Количество команд?'
+    
+    # без декоратора - надо вернуть кнопки
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            self._clear_context(context)
+            context.user_data[self.INTERACTION_KEY] = BotInteraction.START
+            buttons = [
+                ('Создать', 'new'),
+                ('Присоединиться', 'join')
+            ]
+            await update.message.reply_text(
+                text= 'Вы хотите создать свою таблицу или присоединиться к другой?',
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(button, callback_data=data) for button, data in buttons]
+                ])
+            )
+        except Exception as e:
+            logger.debug(str(e))
+            await update.message.reply_text(self.INTERNAL_ERROR)
+
+        # try:
+        #     self._clear_context()
+        #     try:
+        #         self.db.get_user(user.id)
+        #     except RecordNotFound:
+        #         self.db.update_user(user.id, user.name, '')
+        #         return await self.help(update, context)
+        #     url = self._get_argument(update.message.text)
+        #     if not url:      
+        #         owner = self.db.get_owner(user.id)          
+        #         self.db.update_user(user.id, user.name, owner.url)
+        #     else:
+        #         self.db.update_user(user.id, user.name, url)
+        #     answer = 'Вы успешно присоединились к таблице.'
+        # except RecordNotFound:
+        #     try:
+        #         count = self._get_tables_count()
+        #         if count < self.MAX_TABLES:
+        #             context.user_data[self.INTERACTION_KEY] = BotInteraction.GMAIL
+        #             answer = 'Введите вашу gmail почту, чтобы дать права на редактирование (она нигде не сохраняется)'
+        #         else:
+        #             answer = 'Превышено количество таблиц. Обратитесь к разработчику.'
+        #     except Exception as e:
+        #         pass
+        # except Exception as e:
+        #     logger.debug(str(e))
+        # await update.message.reply_text(answer)       
+
+    def _check_players(self, players, stored_players):
+        diff = set(players) - set(stored_players)
+        if diff:
+            raise PlayersNotFound('<b>Не найдены игроки</b>:\n' + '\n'.join(diff))
+        return
+    
+    def _clear_context(self, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.NONE
+        context.user_data[self.USER_KEY] = ''
+        context.user_data[self.GMAIL_KEY] = ''
+
+    def _get_tables_count(self):
+        SCOPES = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ]
+
+        credentials = Credentials.from_service_account_file(
+            self.service_file,
+            scopes=SCOPES
+        )
+        drive_service = build('drive', 'v3', credentials=credentials)
+
+        query = "name contains 'football-rating' and mimeType='application/vnd.google-apps.spreadsheet'"
+        results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+        files = results.get('files', [])
+        # contains сравнивает не совсем точно, не учитывая _ - нужно дополнительно отфильтровать        
+        filtered_files = [f for f in files if f['name'].startswith('football-rating_')]
+        return len(filtered_files)
+    
+    # def _get_argument(self, text: str, max_len: int | None = None):
+    #     index = text.find(' ')
+    #     if index == -1:
+    #         return ''
+    #     arg = text[index + 1:]
+    #     if max_len and len(arg) > max_len:
+    #         raise ArgumentLengthException()
+    #     return arg
+
+    def _get_players_dict(self, df: pd.DataFrame) -> Dict[str, Tuple[int, int]]:
+        return {
+            row["name"]: (row["elo"], row["matches"])
+            for _, row in df.iterrows()
+        }
+    
+    async def _message_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            lines = update.message.text.split('\n')
+            username = lines[0]
+            gmail = lines[1]
+            if not re.fullmatch(gmail, self.GMAIL_REGEX) or not username.startswith('@'):
+                raise ValueError()            
+            context.user_data[self.GMAIL_KEY] = gmail
+            context.user_data[self.USER_KEY] = username
+            self.db.get_user_by_name(username[1:])
+            buttons = ['on', 'off']
+            await update.message.reply_text(
+                text= ' ',
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton(button, callback_data=button) for button in buttons]
+                ])
+            )
+        except (ValueError, IndexError):
+            update.message.reply_text('Неверный формат')
+        except RecordNotFound:
+            update.message.reply_text(self.NO_USER_ERROR)
+    
+    async def _message_gmail(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        answer = self.INTERNAL_ERROR
+        gmail = update.message.text
+        try:
+            self._clear_context(context)
+            count = self._get_tables_count()
+            if count >= self.MAX_TABLES:
+                raise ValueError(f'Достигнут лимит таблиц.')
+            if not re.fullmatch(self.GMAIL_REGEX, gmail):
+                raise ValueError(f'Неверный формат почты {gmail}')
+            user = update.effective_user
+            storage = GSheetStorage(
+                service_file=self.service_file,
+                file_name=f'football-rating_{user.id}',
+                parent_id=FOLDER_ID
+            )
+            url = storage.url
+            storage.wb.share(MY_GMAIL, role='writer', type='user')
+            storage.wb.share(gmail, role='writer', type='user')
+            self.db.add_owner(user.id, url)
+            self.db.update_admin(user.id, url, True)
+            self.db.update_user(user.id, user.username, url)
+            answer = f'Рейтинговая таблица успешно создана: {url}'
+        except ValueError as e:
+            answer = str(e)
+        await update.message.reply_text(answer)
+    
+    async def _message_teams(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        try:
+            context.user_data[self.TEAMS_KEY] = int(update.message.text)
+            context.user_data[self.INTERACTION_KEY] = BotInteraction.PLAYERS
+            answer = 'Введите участников по формату'
+        except ValueError:
+            answer = 'Неверный формат: введите число команд.'
+        await update.message.reply_text(answer)
+        
+    async def _message_players(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        answer = self.INTERNAL_ERROR
+        user = update.effective_user
+        try:
+            count = context.user_data[self.TEAMS_KEY]
+            self._clear_context(context)
+            players = PlayersText(text=update.message.text).players
+            if len(players) % count != 0:
+                raise PlayersNotDivisable
+            team_size = len(players) // count
+            db_user = self.db.get_user(user.id)
+            storage = GSheetStorage(
+                service_file=self.service_file,
+                url=db_user.url
+            )
+            all_data = storage.data
+            players_data = all_data.get_players_match_data_dict(players)
+            stored_players = list(players_data.keys())
+            self._check_players(players, stored_players)
+            df = pd.DataFrame.from_dict(players_data, orient='index').reset_index()
+            df.columns = ['player', 'skill', 'matches']
+            matchmaker = MatchMaking(df, team_size)
+            df = matchmaker.optimize()
+            teams = df.groupby(['team'])[['player', 'skill']]
+            team_list = []
+            players_list = []
+            for key, _ in teams:
+                team = teams.get_group(key)
+                players = team['player'].tolist()
+                players_list.append(players)
+                score = team['skill'].mean()
+                # team_str = key[0]
+                players_str = ', '.join(players)
+                team_list.append(f'{players_str} - средний {score:.2f}')
+            answer = '\n'.join(team_list)
+        except PlayersNotDivisable:
+            answer = 'Количество участников должно делиться на число команд.'
+        except ValueError:
+            answer = 'Не удалось получить число команд.'
+        except (RecordNotFound, PlayersNotFound) as e:
+            answer = str(e)
+        await update.message.reply_text(answer, parse_mode='HTML')        
+
+    async def _message_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         try:            
+            self._clear_context(context)
             user = self.db.get_user(user.id)
+            if not self.db.is_admin(user.id, user.url):
+                raise AdminRequired('Необходимы права администратора.')
             storage = GSheetStorage(
-                self.service_file,
+                service_file=self.service_file,
                 url=user.url
             )
             storage.update_time_stats(datetime.today())
@@ -134,13 +435,10 @@ class FootballRatingBot:
                 player.matches = matches
             scores = list(results.get_scores().items())
             scores.sort(key=lambda x: x[1][0], reverse=True)
-            text = ''
+            answer = ''
             for name, (points, scored, conceded) in scores:
-                text += f'**{name}**:\nОчки - {points}\nЗабито - {scored}\nПропущено - {conceded}\n'
-            await update.message.reply_text(text)
+                answer += f'<b>{name}</b>:\nОчки - {points}\nЗабито - {scored}\nПропущено - {-conceded}\n'
 
-            if not self.db.is_admin(user.id, user.url):
-                raise AdminRequired('Необходимы права администратора.')
             results.update_players()
 
             new_player_data = {
@@ -148,159 +446,41 @@ class FootballRatingBot:
             }            
             stored_data.set_players_match_data(new_player_data)
             storage.write()
-            answer = 'Результаты успешно обновлены'
         except PlayersNotFound as e:
             answer = f'Добавьте игроков:\n{str(e)}'
         except (AdminRequired, RecordNotFound) as e:
             answer = str(e)
-        except Exception as e:
-            logger.debug(str(e))
-        await update.message.reply_text(answer)
-    
-    def run(self):
-        self.application.add_handler(CommandHandler("help", self.help))
-        self.application.add_handler(CommandHandler("start", self.start))
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, self.message))
+        await update.message.reply_text(answer, parse_mode='HTML')
 
+    async def _message_url(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user = update.effective_user        
+        MAX_SIZE = 1024
+        self._clear_context(context)
+        self.db.update_user(user.id, user.name, update.message.text[:MAX_SIZE])
+        await update.message.reply_text("Вы успешно переключились на таблицу.")
 
-        allowed_updates=['message']
-        self.application.run_polling(poll_interval=2, allowed_updates=allowed_updates)
-
-    async def split(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data[self.interaction_key] = BotInteraction.NONE
-        answer = self.internal_error_text
-        user = update.effective_user
-        try:            
-            args = self._get_argument(update.message.text)
-            players = PlayersText(args).players
-            context.user_data[self.players_key] = players
-            answer = 'Количество команд?'            
-        except (PlayersNotFound, RecordNotFound) as e:
-            answer = str(e)
-        except Exception as e:
-            logger.debug(str(e))
-        await update.message.reply_text(answer)
-    
-    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data[self.interaction_key] = BotInteraction.NONE
-        user = update.effective_user
-        answer = self.internal_error_text
-        try:
-            url = self._get_argument(update.message.text)
-            if not url:      
-                owner = self.db.get_owner(user.id)          
-                self.db.update_user(user.id, user.name, owner.url)
-            else:
-                self.db.update_user(user.id, user.username, url)
-            answer = 'Вы успешно присоединились к таблице.'
-        except RecordNotFound:
-            count = self._get_tables_count()
-            if count < self.max_tables:
-                context.user_data[self.interaction_key] = BotInteraction.GMAIL
-                answer = 'Введите вашу gmail почту, чтобы дать права на редактирование (она нигде не сохраняется)'
-            else:
-                answer = 'Превышено количество таблиц. Обратитесь к разработчику.'
-        except Exception as e:
-            logger.debug(str(e))
-        await update.message.reply_text(answer)
-
-    def _check_players(self, players, stored_players):
-        diff = set(players) - set(stored_players)
-        if diff:
-            raise PlayersNotFound('\n'.join(diff))
-        return
-
-    def _get_tables_count(self):
-        gc = pygsheets.authorize(service_account_file='service_account.json')
-        drive_service = build('drive', 'v3', credentials=gc.auth)
-
-        query = "name contains 'football-rating_' and mimeType='application/vnd.google-apps.spreadsheet'"
-        results = drive_service.files().list(q=query, fields="files(id, name)").execute()
-        files = results.get('files', [])
-        return len(files)
-    
-    def _get_argument(self, text: str, max_len: int | None = None):
-        index = text.find(' ')
-        if index == -1:
-            return ''
-        arg = text[index + 1:]
-        if max_len and len(arg) > max_len:
-            raise ArgumentLengthException()
-        return arg
-
-    def _get_players_dict(self, df: pd.DataFrame) -> Dict[str, Tuple[int, int]]:
-        return {
-            row["name"]: (row["elo"], row["matches"])
-            for _, row in df.iterrows()
-        }
-    
-    async def _message_gmail(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        answer = self.internal_error_text
-        context.user_data[self.interaction_key] = BotInteraction.NONE
-        try:
-            mail = update.message.text
-            if not re.fullmatch(r'^[a-zA-Z0-9._%+-]+@gmail\.com$', mail):
-                raise ValueError(f'Не валидная почта {mail}')
-            user = update.effective_user
+    async def _set_admin(self, username: str, gmail: str, state: bool):
+        user = self.db.get_user_by_name(username)
+        self.db.update_admin(user.id, user.name, state)
+        if gmail:
+            user = self.db.get_user(user.id)
             storage = GSheetStorage(
-                self.service_file,
-                file_name=f'football-rating_{user.id}'
+                service_file=self.service_file,
+                url=user.url
             )
-            url = storage.url
-            storage.wb.share(mail)
-            self.db.add_owner(user.id, url)
-            self.db.update_admin(user.id, url, True)
-            self.db.update_user(user.id, user.username, url)
-            answer = f'Рейтинговая таблица успешно создана: {url}'
-        except ValueError as e:
-            answer = str(e)
-        except Exception as e:
-            logger.debug(str(e))
-        await update.message.reply_text(answer)
+            role = 'writer' if state else 'reader'
+            storage.wb.share(gmail, role=role, type='user')       
 
-    async def _message_size(self, update: Update, context: ContextTypes.DEFAULT_TYPE):        
-        answer = self.internal_error_text
-        context.user_data[self.interaction_key] = BotInteraction.NONE
-        user = update.effective_user
-        players = context.user_data[self.players_key]
-        try:
-            count = int(update.message.text)
-            if len(players) % count != 0:
-                raise PlayersNotDivisable
-            db_user = self.db.get_user(user.id)
-            storage = GSheetStorage(
-                self.service_file,
-                url=db_user.url
-            )
-            all_data = storage.data
-            players_data = all_data.get_players_match_data_dict(players)
-            stored_players = list(players_data.keys())
-            self._check_players(players, stored_players)
-            df = pd.DataFrame.from_dict(players_data, orient='index').reset_index()
-            df.columns = ['player', 'skill', 'matches']
-            matchmaker = MatchMaking(df, 5)
-            df = matchmaker.optimize()
-            teams = df.groupby(['team'])[['player', 'skill']]
-            team_list = []
-            players_list = []
-            for key, _ in teams:
-                team = teams.get_group(key)
-                players = team['player'].tolist()
-                players_list.append(players)
-                score = team['skill'].mean()
-                # team_str = key[0]
-                players_str = ', '.join(players)
-                team_list.append(f'{players_str} - средний {score:.2f}')
-            answer = '\n'.join(team_list)
-        except ValueError:
-            answer = 'Не удалось получить число команд.'
-        except PlayersNotDivisable:
-            answer = 'Количество участников должно делиться на число команд.'
-        except RecordNotFound as e:
-            answer = str(e)
-        except Exception as e:
-            logger.debug(str(e))
-        await update.message.reply_text(answer)
+    async def _start_new(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.GMAIL
+        await update.callback_query.message.reply_text(
+            'Введите вашу gmail почту, чтобы дать права '
+            'на редактирование (она нигде не сохраняется).'
+        )
+
+    async def _join(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.URL
+        await update.callback_query.message.reply_text('Введите ссылку на таблицу.')
         
         
 # import pygsheets

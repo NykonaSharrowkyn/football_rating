@@ -2,7 +2,7 @@ import datetime
 import re
 import sys
 
-from matchday import Match, MatchDay, Player, Team
+from .matchday import Match, MatchDay, Player, Team
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -72,11 +72,13 @@ class MatchDayParser:
             read_match(line, self.results.teams) for line in result_lines
         ]
         self.results.matches = [match for match in self.results.matches if match is not None]
-        basename = Path(self.filepath).stem
-        underscore = basename.find('_')
-        if underscore != -1:
-            basename = basename[:underscore]
-        self.results.date = datetime.datetime.strptime(basename, "%Y-%m-%d").date()
+        self.results.date = datetime.datetime.now().date()
+        if self.filepath:
+            basename = Path(self.filepath).stem
+            underscore = basename.find('_')
+            if underscore != -1:
+                basename = basename[:underscore]
+            self.results.date = datetime.datetime.strptime(basename, "%Y-%m-%d").date()
 
 
 @dataclass
@@ -88,6 +90,8 @@ class PlayersText:
     def __post_init__(self):
         if not self.text:
             self.text = read_lines(self.filepath)
+        else:
+            self.text = self.text.split('\n')
         self.read(self.text)
 
     def read(self, lines: str):
@@ -118,7 +122,7 @@ class PlayersText:
                     pass
             m = re.fullmatch(reg, line.lower())
             if not m:
-                raise ValueError(f'Line {line} does not match to regular expression.')
+                raise ValueError(f'Строка {line} не соответствует шаблону.')
             name = line[m.start(1):m.end(1)]
             if name.endswith('.'):
                 name = name[:-1]

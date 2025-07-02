@@ -31,8 +31,9 @@ class User(Base):
     
 class Admin(Base)    :
     __tablename__ = 'admins'
-    id = Column(Integer, ForeignKey('users.id'))
-    url = Column(String, ForeignKey('owners.url'))
+    # Foreign Key чет сбоил в SqliteProfessional - убрал
+    id = Column(Integer, primary_key=True)      # обязательно должен быть primary_key
+    url = Column(String, primary_key=True)      # в данном случае - составной на пары
 
 def model_to_dict(model):
     if model is None:

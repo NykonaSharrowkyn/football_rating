@@ -108,7 +108,7 @@ class MatchDay:
                 player.matches += 1
     
     def get_scores(self) -> dict:
-        scores = {team.name: np.zeros((1, 3), dtype=int) for team in self.teams}
+        scores = {team.name: np.zeros((3,), dtype=int) for team in self.teams}
         for match in self.matches:            
             update1 = np.zeros((3,), dtype=int)
             update2 = np.zeros((3,), dtype=int)

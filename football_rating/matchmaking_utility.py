@@ -1,5 +1,5 @@
-import data_storage
-import text_parser
+from .data_storage import GSheetStorage
+from .text_parser import PlayersText, check_new_players
 
 import argparse
 import numpy as np
@@ -7,8 +7,8 @@ import pandas as pd
 import os
 import sys
 
-from matchday import DEFAULT_ELO, Team, Player
-from matchmaking import MatchMaking
+from .matchday import DEFAULT_ELO, Team, Player
+from .matchmaking import MatchMaking
 
 from typing import Dict, List, Tuple
 
@@ -66,15 +66,15 @@ def test_expected(players_list: list, players_data: dict):
 
 
 def split_teams(filepath: str, storage: str, size: int = 5):
-    players = text_parser.PlayersText(filepath).players
-    storage = data_storage.GSheetStorage(
+    players = PlayersText(filepath).players
+    storage = GSheetStorage(
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name=storage
     )
     all_data = storage.data
     players_data = all_data.get_players_match_data_dict(players)
     stored_players = list(players_data.keys())
-    text_parser.check_new_players(players, stored_players)
+    check_new_players(players, stored_players)
     new_players = set(players) - set(stored_players)
     new_players_data = {name: [0, DEFAULT_ELO] for name in new_players}
     players_data |= new_players_data
@@ -101,5 +101,6 @@ def split_teams(filepath: str, storage: str, size: int = 5):
 
 if __name__ == '__main__':
     args = parse_argument()
-    os.chdir(sys.path[0])
+    args.filepath = 'football_rating/players/' + args.filepath
+    # os.chdir(sys.path[0])
     split_teams(**vars(args))

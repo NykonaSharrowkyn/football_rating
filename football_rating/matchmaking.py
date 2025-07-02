@@ -4,9 +4,9 @@ import time
 import numpy as np
 import pandas as pd
 
-from log import get_logger
+from .log import get_logger
 
-from matchday import Team, Player
+from .matchday import Team, Player
 
 logger = get_logger(__name__)
 
