@@ -1,9 +1,8 @@
 import pandas as pd
 
-import matchday
-import players_data
-import text_parser
-import data_storage
+from .matchday import Team, MatchDay
+from .text_parser import MatchDayParser, check_new_players
+from .data_storage import GSheetStorage
 
 import argparse
 import os
@@ -23,15 +22,15 @@ def parse_argument() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def player_generator(teams: List[matchday.Team]):
+def player_generator(teams: List[Team]):
     for team in teams:
         for player in team.players:
             yield player
 
 
 def save_match_played(
-        storage: data_storage.GSheetStorage,
-        match_day: matchday.MatchDay
+        storage: GSheetStorage,
+        match_day: MatchDay
 ):
     matches = match_day.matches_per_player()
     new_df = storage.data.df.reset_index()[["Name"]].set_index('Name')
@@ -53,17 +52,17 @@ def save_match_played(
 
 def update_rating(filepath: str, storage: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
-    google_storage = data_storage.GSheetStorage(
+    google_storage = GSheetStorage(
         service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
         file_name=storage
     )
     google_storage.update_time_stats(datetime.today())
     stored_data = google_storage.data
-    results = text_parser.MatchDayParser(filepath=filepath).results
+    results = MatchDayParser(filepath=filepath).results
     teams = results.teams
     players = [player.name for player in player_generator(teams)]
     stored_players = stored_data.get_players_match_data_dict(players)
-    text_parser.check_new_players(players, list(stored_players.keys()))
+    check_new_players(players, list(stored_players.keys()))
     for player in player_generator(teams):
         try:
             elo, matches = stored_players[player.name]
@@ -95,5 +94,5 @@ if __name__ == '__main__':
         if key.lower() != 'y':
             print('Main storage guard abort')
             sys.exit(1)
-    os.chdir(sys.path[0])
+    args.filepath = 'football_rating/results/' + args.filepath
     update_rating(**vars(args))

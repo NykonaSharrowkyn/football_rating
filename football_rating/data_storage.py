@@ -2,12 +2,13 @@ import pandas as pd
 import pygsheets
 import pygsheets.client
 
-from players_data import PlayersStorageData
+from .players_data import PlayersStorageData
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import date, datetime
-from typing import Any, Tuple
+from datetime import datetime
+from googleapiclient.discovery import build
+from typing import Tuple
 
 
 @dataclass
@@ -91,6 +92,7 @@ class GSheetStorage(Storage):
     sheet_name: str = 'rating'
     file_name: str | None = None
     url: str | None = None
+    parent_id: str | None = None
     gc: pygsheets.client.Client | None = None
     wb: pygsheets.Spreadsheet | None = None
     wks: pygsheets.Worksheet | None= None
@@ -113,23 +115,42 @@ class GSheetStorage(Storage):
             try:
                 self.wb = self.gc.open(self.file_name)
             except pygsheets.SpreadsheetNotFound:
-                self.wb = self.gc.create(self.file_name)
+                if not self.parent_id:
+                    self.wb = self.gc.create(self.file_name)
+                else:                    
+                    # 1. Создаём метаданные файла с указанием папки
+                    file_metadata = {
+                        'name': self.file_name,  # Название таблицы
+                        'parents': [self.parent_id],  # ID папки (можно взять из URL)
+                        'mimeType': 'application/vnd.google-apps.spreadsheet'
+                    }
+                    # 2. Создаём файл через Google Drive API
+                    drive_service = build('drive', 'v3', credentials=self.gc.oauth)  # Получаем объект Drive API
+                    file = drive_service.files().create(
+                        body=file_metadata,
+                        supportsAllDrives=True  # Важно для Shared Drives
+                    ).execute()
+                    # 3. Открываем таблицу через pygsheets
+                    self.wb = self.gc.open_by_key(file['id'])
                 self.wks = self.wb.add_worksheet(self.sheet_name)
                 self.wks.update_value('A1', 'Name')
                 self.wks.update_value('B1', 'Rating')
                 self.wks.update_value('C1', 'Matches')
                 self.wks.update_value('D1', 'Prev rating')
                 self.wks.update_value('E1', 'Change')
+                try:
+                    default_sheet = self.wb.worksheet_by_title('Sheet1')
+                    self.wb.del_worksheet(default_sheet)
+                except pygsheets.WorksheetNotFound:
+                    pass
                 self._update_color(self.wks, ('A1', 'E1'), (0.0, 0.8, 0.0))
-                self.url = self.wb.url
+            self.url = self.wb.url
         else:
             raise ValueError('No url or name provided')
         self.wks = self.wb.worksheet_by_title(self.sheet_name)
 
 
     def read(self):
-        self.wb = self.gc.open(self.file_name)
-        self.wks = self.wb.worksheet_by_title('rating')
         df: pd.DataFrame = self.wks.get_as_df()
         df.set_index('Name', inplace=True)
         self.data.df = df

@@ -6,3 +6,4 @@ football_rating/token.txt
 .venv
 __pycache__
 *.db
+football_rating_bot/my_config.py
