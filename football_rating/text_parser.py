@@ -80,6 +80,9 @@ class MatchDayParser:
                 basename = basename[:underscore]
             self.results.date = datetime.datetime.strptime(basename, "%Y-%m-%d").date()
 
+class PlayersFormatError(ValueError):
+    pass
+
 
 @dataclass
 class PlayersText:
@@ -122,7 +125,7 @@ class PlayersText:
                     pass
             m = re.fullmatch(reg, line.lower())
             if not m:
-                raise ValueError(f'Строка {line} не соответствует шаблону.')
+                raise PlayersFormatError(f'Строка {line} не соответствует шаблону.')
             name = line[m.start(1):m.end(1)]
             if name.endswith('.'):
                 name = name[:-1]
