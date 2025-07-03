@@ -315,22 +315,22 @@ class FootballRatingBot:
             lines = update.message.text.split('\n')
             username = lines[0]
             gmail = lines[1]
-            if not re.fullmatch(gmail, self.GMAIL_REGEX) or not username.startswith('@'):
+            if not re.fullmatch(self.GMAIL_REGEX, gmail) or not username.startswith('@'):
                 raise ValueError()            
             context.user_data[self.GMAIL_KEY] = gmail
-            context.user_data[self.USER_KEY] = username
+            context.user_data[self.USER_KEY] = username[1:]
             self.db.get_user_by_name(username[1:])
-            buttons = ['on', 'off']
+            buttons = [('Админ', 'on'), ('Пользователь', 'off')]
             await update.message.reply_text(
-                text= ' ',
+                text= 'Какие права дать пользователю?',
                 reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(button, callback_data=button) for button in buttons]
+                    [InlineKeyboardButton(caption, callback_data=data) for caption, data in buttons]
                 ])
             )
         except (ValueError, IndexError):
-            update.message.reply_text('Неверный формат')
+            await update.message.reply_text('Неверный формат')
         except RecordNotFound:
-            update.message.reply_text(self.NO_USER_ERROR)
+            await update.message.reply_text(self.NO_USER_ERROR)
     
     async def _message_gmail(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         answer = self.INTERNAL_ERROR
@@ -459,9 +459,9 @@ class FootballRatingBot:
         self.db.update_user(user.id, user.name, update.message.text[:MAX_SIZE])
         await update.message.reply_text("Вы успешно переключились на таблицу.")
 
-    async def _set_admin(self, username: str, gmail: str, state: bool):
+    def _set_admin(self, username: str, gmail: str, state: bool):
         user = self.db.get_user_by_name(username)
-        self.db.update_admin(user.id, user.name, state)
+        self.db.update_admin(user.id, user.url, state)
         if gmail:
             user = self.db.get_user(user.id)
             storage = GSheetStorage(
