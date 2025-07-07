@@ -1,6 +1,13 @@
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+
+from dotenv import load_dotenv
+
+import os
+import json
 import sys
+
+load_dotenv()
 
 if __name__ == '__main__':
     SCOPES = [
@@ -8,9 +15,10 @@ if __name__ == '__main__':
         'https://www.googleapis.com/auth/drive'
     ]
     filename = sys.argv[1]
+    gcp_key = os.getenv("GCP_KEY")
 
-    credentials = Credentials.from_service_account_file(
-        'eternal-delight-433008-q1-1bb6245a61a9.json',
+    credentials = Credentials.from_service_account_info(
+        json.loads(gcp_key),
         scopes=SCOPES
     )
     drive_service = build('drive', 'v3', credentials=credentials)

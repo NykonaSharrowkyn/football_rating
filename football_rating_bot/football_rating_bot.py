@@ -1,15 +1,17 @@
 from .football_database import FootballDatabase, RecordNotFound
-from .my_config import *
 from football_rating.data_storage import GSheetStorage
 from football_rating.matchmaking import MatchMaking
-from football_rating.text_parser import MatchDayParser, PlayersText, PlayersFormatError
+from football_rating.text_parser import MatchDayParser, PlayersText, PlayersFormatError, TeamNotFound
 from football_rating.football_rating_utility import player_generator
 
+import json
 import logging
+import os
 import pandas as pd
 import re
 
 from datetime import datetime
+from dotenv import load_dotenv
 from enum import IntEnum, unique
 from functools import wraps
 from google.oauth2.service_account import Credentials
@@ -26,6 +28,8 @@ logger = logging.getLogger('football_rating_bot')
 logging.getLogger('httpcore').setLevel(logging.WARNING)
 logging.getLogger('httpx').setLevel(logging.WARNING)
 logging.getLogger('telegram.ext').setLevel(logging.WARNING)
+
+load_dotenv()
 
 class ArgumentLengthException(Exception):
     pass
@@ -78,9 +82,11 @@ class FootballRatingBot:
     GMAIL_REGEX = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
 
 
-    def __init__(self, token, db_path):
-        self.token = token
-        self.service_file = SERVICE_FILE
+    def __init__(self, db_path):
+        self.token = os.getenv("BOT_TOKEN")
+        self.gcp_key = os.getenv("GCP_KEY")
+        self.folder_id = os.getenv("BOT_FOLDER_ID")
+        self.admin_gmail = os.getenv("ADMIN_GMAIL")
         self.db = FootballDatabase(db_path)
         self.application = Application \
             .builder() \
@@ -232,8 +238,8 @@ class FootballRatingBot:
             'https://www.googleapis.com/auth/drive'
         ]
 
-        credentials = Credentials.from_service_account_file(
-            self.service_file,
+        credentials = Credentials.from_service_account_info(
+            json.loads(self.gcp_key),
             scopes=SCOPES
         )
         drive_service = build('drive', 'v3', credentials=credentials)
@@ -300,12 +306,12 @@ class FootballRatingBot:
                 raise ValueError(f'Неверный формат почты {gmail}')
             user = update.effective_user
             storage = GSheetStorage(
-                service_file=self.service_file,
+                service_json=self.gcp_key,
                 file_name=f'football-rating_{user.id}',
-                parent_id=FOLDER_ID
+                parent_id=self.folder_id
             )
             url = storage.url
-            storage.wb.share(MY_GMAIL, role='writer', type='user')
+            storage.wb.share(self.admin_gmail, role='writer', type='user')
             storage.wb.share(gmail, role='writer', type='user')
             self.db.add_owner(user.id, url)
             self.db.update_admin(user.id, url, True)
@@ -336,7 +342,7 @@ class FootballRatingBot:
             team_size = len(players) // count
             db_user = self.db.get_user(user.id)
             storage = GSheetStorage(
-                service_file=self.service_file,
+                service_json=self.gcp_key,
                 url=db_user.url
             )
             all_data = storage.data
@@ -375,7 +381,7 @@ class FootballRatingBot:
             if not self.db.is_admin(user.id, user.url):
                 raise AdminRequired('Необходимы права администратора')
             storage = GSheetStorage(
-                service_file=self.service_file,
+                service_json=self.gcp_key,
                 url=user.url
             )
             storage.update_time_stats(datetime.today())
@@ -402,9 +408,7 @@ class FootballRatingBot:
             }            
             stored_data.set_players_match_data(new_player_data)
             storage.write()
-        except PlayersNotFound as e:
-            answer = f'Добавьте игроков:\n{str(e)}'
-        except (AdminRequired, RecordNotFound) as e:
+        except (AdminRequired, RecordNotFound, TeamNotFound, PlayersNotFound) as e:
             answer = str(e)
         await update.message.reply_text(answer, parse_mode='HTML')
 
@@ -421,7 +425,7 @@ class FootballRatingBot:
         if gmail:
             user = self.db.get_user(user.id)
             storage = GSheetStorage(
-                service_file=self.service_file,
+                service_json=self.gcp_key,
                 url=user.url
             )
             role = 'writer' if state else 'reader'

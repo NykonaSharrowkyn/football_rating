@@ -9,17 +9,22 @@ from pathlib import Path
 from typing import List
 
 
+class TeamNotFound(KeyError):
+    pass
+
 def read_match(match_line: str, teams: List[Team]) -> Match | None:
     team_dict = {team.short_name(): team for team in teams}
     m = re.match(r"\s*([А-Яа-я]+)\s*(\d+)\s*[:-]\s*(\d+)\s*([А-Яа-я]+)\s*", match_line)
     if m is None:
         return None
-    team1 = team_dict[m.group(1).lower()]
-    goals1 = int(m.group(2))
-    goals2 = int(m.group(3))
-    team2 = team_dict[m.group(4).lower()]
+    try:
+        team1 = team_dict[m.group(1).lower()]
+        goals1 = int(m.group(2))
+        goals2 = int(m.group(3))
+        team2 = team_dict[m.group(4).lower()]
+    except KeyError as e:
+        raise TeamNotFound(f'Команда {e.args[0]} не найдена')
     return Match(team1, team2, goals1, goals2)
-
 
 def read_team(team_line: str) -> Team:
     colon = team_line.index(':')
@@ -47,7 +52,6 @@ def check_new_players(players: List[str], stored: List[str]):
             print(name)
         print('Add new players rating to storage')
         sys.exit(1)
-
 
 @dataclass
 class MatchDayParser:

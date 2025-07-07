@@ -1,4 +1,5 @@
 import pandas as pd
+import json
 import pygsheets
 import pygsheets.client
 
@@ -88,7 +89,7 @@ class CsvTextFileStorage(FileStorage):
 
 @dataclass
 class GSheetStorage(Storage):
-    service_file: str | None = None
+    service_json: str | None = None
     sheet_name: str = 'rating'
     file_name: str | None = None
     url: str | None = None
@@ -98,7 +99,7 @@ class GSheetStorage(Storage):
     wks: pygsheets.Worksheet | None= None
 
     def __post_init__(self):
-        self.gc = pygsheets.authorize(service_file=self.service_file)
+        self.gc = pygsheets.authorize(service_account_json=self.service_json)
         return super().__post_init__()
 
     def check_sheet(self, name: str):

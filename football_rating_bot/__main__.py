@@ -6,7 +6,6 @@ from pathlib import Path
 # import asyncio
 
 bot = FootballRatingBot(
-    token=Path(TOKEN_PATH).read_text(), 
     db_path=DB_PATH
 )
 bot.run()

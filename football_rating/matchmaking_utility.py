@@ -3,14 +3,16 @@ from .text_parser import PlayersText, check_new_players
 
 import argparse
 import numpy as np
-import pandas as pd
 import os
-import sys
+import pandas as pd
 
 from .matchday import DEFAULT_ELO, Team, Player
 from .matchmaking import MatchMaking
 
+from dotenv import load_dotenv
 from typing import Dict, List, Tuple
+
+load_dotenv()
 
 
 def parse_argument() -> argparse.Namespace:
@@ -20,7 +22,7 @@ def parse_argument() -> argparse.Namespace:
     )
     parser.add_argument('filepath', help='text file with player names')
     parser.add_argument('-s', '--storage', default='football-rating')
-    parser.add_argument('--size', default=5)
+    parser.add_argument('--size', default=5, type=int)
     return parser.parse_args()
 
 
@@ -68,7 +70,7 @@ def test_expected(players_list: list, players_data: dict):
 def split_teams(filepath: str, storage: str, size: int = 5):
     players = PlayersText(filepath).players
     storage = GSheetStorage(
-        service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
+        service_json=os.getenv("GCP_KEY"),
         file_name=storage
     )
     all_data = storage.data

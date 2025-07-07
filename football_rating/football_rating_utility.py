@@ -9,7 +9,10 @@ import os
 import sys
 
 from datetime import datetime
-from typing import List, Dict, Tuple
+from dotenv import load_dotenv
+from typing import List
+
+load_dotenv()
 
 
 def parse_argument() -> argparse.Namespace:
@@ -53,7 +56,7 @@ def save_match_played(
 def update_rating(filepath: str, storage: str):
     # storage = data_storage.CsvTextFileStorage('ratings.csv')
     google_storage = GSheetStorage(
-        service_file='eternal-delight-433008-q1-1bb6245a61a9.json',
+        service_json=os.getenv("GCP_KEY"),
         file_name=storage
     )
     google_storage.update_time_stats(datetime.today())
