@@ -1,18 +1,18 @@
 from .football_rating_bot import FootballRatingBot
-from .config import TOKEN_PATH, DB_PATH
 
-from pathlib import Path
+import os
 
-# import asyncio
+db_url = os.getenv('DATABASE_URL')
+
+if not db_url:
+    db_url='sqlite:///football-bot-db.db'
+
+# Для SQLAlchemy 2.0+ замените postgres:// на postgresql://
+if db_url.startswith('postgres://'):
+    db_url = db_url.replace('postgres://', 'postgresql://', 1)
 
 bot = FootballRatingBot(
-    db_path=DB_PATH
+    db_url=db_url
 )
+
 bot.run()
-# try:
-#     asyncio.run(bot.start())
-# except RuntimeError as e:
-#     if str(e) == "Cannot close a running event loop":
-#         # Если event loop уже запущен (например, в Jupyter Notebook)
-#         loop = asyncio.get_event_loop()
-#         loop.run_until_complete(bot.start())

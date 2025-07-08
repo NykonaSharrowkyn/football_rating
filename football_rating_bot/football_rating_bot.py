@@ -82,12 +82,12 @@ class FootballRatingBot:
     GMAIL_REGEX = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
 
 
-    def __init__(self, db_path):
+    def __init__(self, db_url):
         self.token = os.getenv("BOT_TOKEN")
         self.gcp_key = os.getenv("GCP_KEY")
         self.folder_id = os.getenv("BOT_FOLDER_ID")
         self.admin_gmail = os.getenv("ADMIN_GMAIL")
-        self.db = FootballDatabase(db_path)
+        self.db = FootballDatabase(db_url)
         self.application = Application \
             .builder() \
             .token(self.token) \

@@ -1,0 +1,20 @@
+# python
+.venv
+*.pyc
+*.pyo
+*.pyd
+__pycache__
+
+# ide
+.vscode
+.git
+.gitignore
+
+# data
+*.db
+
+# service
+football_rating/players
+football_rating/results
+delete_file.py
+*.ipynb

@@ -93,7 +93,7 @@ def update_rating(filepath: str, storage: str):
 if __name__ == '__main__':
     args = parse_argument()
     if args.storage == 'football-rating':
-        key = input('Update main storage? [y]:')
+        key = input('\nUpdate main storage? [y]:')
         if key.lower() != 'y':
             print('Main storage guard abort')
             sys.exit(1)
