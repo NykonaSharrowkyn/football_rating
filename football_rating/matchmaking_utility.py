@@ -32,7 +32,9 @@ def get_df(players_data: Dict[str, List[int]]) -> pd.DataFrame:
     return df
 
 
-def get_teams(teams: List[str]) -> List[str]:
+def get_teams(teams: List[str], html: bool = False) -> List[str]:
+    bold1 = '**' if not html else '<b>'
+    bold2 = '**' if not html else '</b>'
     players_dict = {
         'Макс И': 'Красные',
         'Вова К': 'Синие',
@@ -49,10 +51,10 @@ def get_teams(teams: List[str]) -> List[str]:
     unused_idx = set(range(len(teams))) - set(team_dict.keys())
     unused_names = set(players_dict.values()) - set(team_dict.values())
     if len(unused_idx) > len(unused_names):      # something gone wrong
-        return [f'**Команда {i}**: {team}' for i, team in enumerate(teams)]
+        return [f'{bold1}Команда {i}{bold2}: {team}' for i, team in enumerate(teams)]
 
     team_dict.update({i: name for i, name in zip(unused_idx, unused_names)})
-    return [f'**{team_dict[i]}**: {team}' for i, team in enumerate(teams)]
+    return [f'{bold1}{team_dict[i]}{bold2}: {team}' for i, team in enumerate(teams)]
 
 def test_expected(players_list: list, players_data: dict):
     teams = []

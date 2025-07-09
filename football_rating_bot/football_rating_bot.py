@@ -3,6 +3,7 @@ from football_rating.data_storage import GSheetStorage
 from football_rating.matchmaking import MatchMaking
 from football_rating.text_parser import MatchDayParser, PlayersText, PlayersFormatError, TeamNotFound
 from football_rating.football_rating_utility import player_generator
+from football_rating.matchmaking_utility import get_teams
 
 import json
 import logging
@@ -364,7 +365,7 @@ class FootballRatingBot:
                 # team_str = key[0]
                 players_str = ', '.join(players)
                 team_list.append(f'{players_str} - средний {score:.2f}')
-            answer = '\n'.join(team_list)
+            answer = '\n'.join(get_teams(team_list, html=True))
         except PlayersNotDivisable:
             answer = 'Количество участников должно делиться на число команд'
         except (RecordNotFound, PlayersNotFound, PlayersFormatError) as e:
