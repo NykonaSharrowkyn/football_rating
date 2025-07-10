@@ -72,9 +72,6 @@ def with_commit(func: Callable):
 class RecordNotFound(LookupError):
     pass
 
-class OwnerExists(LookupError):
-    pass
-
 # class AdminRequired(PermissionError):
 #     pass
 
@@ -97,9 +94,6 @@ class FootballDatabase:
     
     def __exit__(self, exc_type, sxc_val, exc_tb):
         pass
-
-    def add_owner(self, id: int, url: str):
-        self._add_owner(id, url)
        
     def get_owner(self, id: int) -> Owner:
         owner = self._get_owner(id)
@@ -125,16 +119,11 @@ class FootballDatabase:
     def update_admin(self, admin_id: int, url: str, state: bool):
         self._update_admin(admin_id, url, state)
 
+    def update_owner(self, id: int, url: str):
+        self._update_owner(id, url)        
+
     def update_user(self, id: int, name: str, url: str):
         self._update_user(id, name, url)
-
-    @with_commit
-    def _add_owner(self, id: int, url: str, session: Session):
-        owner = session.query(Owner).filter_by(id=id).first()
-        if owner:
-            raise OwnerExists(f'Владелец {id} уже существует')
-        owner = Owner(id=id, url=url)
-        session.add(owner)
 
     @with_session
     def _get_owner(self, id: int, session: Session):
@@ -160,6 +149,15 @@ class FootballDatabase:
             session.add(admin)
         elif not state and admin:
             session.delete(admin)
+
+    @with_commit
+    def _update_owner(self, id: int, url: str, session: Session):
+        owner = session.query(Owner).filter_by(id=id).first()
+        if owner:
+            owner.url = url
+        else:
+            owner = Owner(id=id, url=url)
+            session.add(owner)            
 
     @with_commit
     def _update_user(self, id: int, name: str, url: str, session: Session):

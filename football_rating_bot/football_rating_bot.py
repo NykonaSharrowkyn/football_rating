@@ -314,7 +314,7 @@ class FootballRatingBot:
             url = storage.url
             storage.wb.share(self.admin_gmail, role='writer', type='user')
             storage.wb.share(gmail, role='writer', type='user')
-            self.db.add_owner(user.id, url)
+            self.db.update_owner(user.id, url)
             self.db.update_admin(user.id, url, True)
             self.db.update_user(user.id, user.username, url)
             answer = f'Рейтинговая таблица успешно создана: {url}'
@@ -417,7 +417,7 @@ class FootballRatingBot:
         user = update.effective_user        
         MAX_SIZE = 1024
         self._clear_context(context)
-        self.db.update_user(user.id, user.name, update.message.text[:MAX_SIZE])
+        self.db.update_user(user.id, user.username, update.message.text[:MAX_SIZE])
         await update.message.reply_text("Вы успешно переключились на таблицу")
 
     def _set_admin(self, username: str, gmail: str, state: bool):
