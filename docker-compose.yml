@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    image: football-bot-image
+    container_name: football-bot
+    restart: unless-stopped
+    env_file: .env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    stop_grace_period: 30s
