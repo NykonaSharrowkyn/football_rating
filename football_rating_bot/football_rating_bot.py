@@ -312,6 +312,7 @@ class FootballRatingBot:
                 parent_id=self.folder_id
             )
             url = storage.url
+            storage.wb.share('', role='reader', type='anyone')
             storage.wb.share(self.admin_gmail, role='writer', type='user')
             storage.wb.share(gmail, role='writer', type='user')
             self.db.add_owner(user.id, url)
