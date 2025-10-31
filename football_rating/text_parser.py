@@ -105,8 +105,9 @@ class PlayersText:
     def read(self, lines: str):
         self.players.clear()
         self.to_split.clear()
-        while not re.match(r'\s*\d', lines[0]):
+        while re.match(r'^\s*$', lines[0]):
             lines.pop(0)
+        lines.pop(0)        # title
         split_words = [
             ' б/а',
             ' ба',
@@ -122,12 +123,18 @@ class PlayersText:
         имя
         текст - лабуда какая-то по-моему
         '''
-        reg = re.compile(r'\*?(\d+\s*\.?)?\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
+        reg = re.compile(r'\*?(\d+\s*\.?)?\s*([а-яёa-z]+(\s+[а-яёa-z]+\.?)?)\s*')
         for i, line in enumerate(lines):
+            split_player = line.lstrip().startswith('*')
+            if split_player:
+                line = line.replace('*', '', 1)
             if ',' in line:
                 line.remove(',')
-            # Удаляем все символы кроме букв, цифр, пробелов и основных знаков препинания
-            line = re.sub(r'[^\w\s/а-яА-ЯёЁ\-]', '', line, flags=re.UNICODE) 
+            # 1. Удалить \s*не_ascii\s* в начале строки
+            line = re.sub(r'^\s*[^\w\sа-яА-ЯёЁ\-\.\\\/]+\s*', '', line, flags=re.UNICODE)
+            # 2. Удалить все после первого не_ascii (включая его)
+            line = re.sub(r'[^\w\sа-яА-ЯёЁ\-\.\\\/].*$', '', line, flags=re.UNICODE)
+
             for word in split_words:
                 if line.lower().endswith(word):
                     line = line[:-len(word)]
@@ -146,5 +153,5 @@ class PlayersText:
             if name.endswith('.'):
                 name = name[:-1]
             self.players.append(name)
-            if line.lstrip().startswith('*'):
+            if split_player:
                 self.to_split.append(name)
