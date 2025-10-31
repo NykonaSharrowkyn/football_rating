@@ -107,7 +107,6 @@ class PlayersText:
         self.to_split.clear()
         while re.match(r'^\s*$', lines[0]):
             lines.pop(0)
-        lines.pop(0)        # title
         split_words = [
             ' б/а',
             ' ба',
