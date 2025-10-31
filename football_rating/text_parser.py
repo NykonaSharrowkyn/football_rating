@@ -126,6 +126,7 @@ class PlayersText:
         for i, line in enumerate(lines):
             if ',' in line:
                 line.remove(',')
+            line = re.sub(r'[^\p{L}\p{N}\s,.!?;:()\-]', '', line, flags=re.UNICODE)
             for word in split_words:
                 if line.lower().endswith(word):
                     line = line[:-len(word)]
