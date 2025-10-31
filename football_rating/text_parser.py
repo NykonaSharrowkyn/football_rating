@@ -122,7 +122,7 @@ class PlayersText:
         имя
         текст - лабуда какая-то по-моему
         '''
-        reg = re.compile(r'\*?\d+\s*\.?\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
+        reg = re.compile(r'\*?(\d+\s*\.?)?\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
         for i, line in enumerate(lines):
             if ',' in line:
                 line.remove(',')
@@ -140,7 +140,7 @@ class PlayersText:
             m = re.fullmatch(reg, line.lower())
             if not m:
                 raise PlayersFormatError(f'Строка {line} не соответствует шаблону.')
-            name = line[m.start(1):m.end(1)]
+            name = line[m.start(2):m.end(2)]
             if name.endswith('.'):
                 name = name[:-1]
             self.players.append(name)
