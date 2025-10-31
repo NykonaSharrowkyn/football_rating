@@ -70,7 +70,9 @@ def test_expected(players_list: list, players_data: dict):
 
 
 def split_teams(filepath: str, storage: str, size: int = 5):
-    players = PlayersText(filepath).players
+    parser = PlayersText(filepath)
+    players = parser.players
+    split_players = parser.to_split
     storage = GSheetStorage(
         service_json=os.getenv("GCP_KEY"),
         file_name=storage
@@ -83,7 +85,15 @@ def split_teams(filepath: str, storage: str, size: int = 5):
     new_players_data = {name: [0, DEFAULT_ELO] for name in new_players}
     players_data |= new_players_data
     df = get_df(players_data)
-    matchmaker = MatchMaking(df, size)
+    '''
+        Общие комментарии по работе MatchMaking (N - игроков в команде):
+        1. игрокам назначается skill_bin 1-N
+        2. проходим итерациями по каждом skill_bin где нет команды и назначаем команду по порядку
+        3. выбираем две команды и берем все комбинации, где 2 игрока поменяны местами
+        4. выбираем наилучшую по score комбинацию (update_mean я модифицировал) и сравниваем с текущей
+        5. если лучше - меняем команды и сбрасываем счетчик
+    '''    
+    matchmaker = MatchMaking(df, size, split=split_players)
     df = matchmaker.optimize()
     teams = df.groupby(['team'])[['player', 'skill']]
     team_list = []

@@ -79,6 +79,7 @@ class MatchMaking:
         noise_size=10000,
         noise_digits=2,
         to_file=False,
+        split=None
     ):
         """
         Parameters
@@ -95,6 +96,8 @@ class MatchMaking:
             Size of the Laplace noise, which is added.
         noise_digits: int
             Number of digits, which are used to round off the noised values.
+        split:
+            players set to different teams
         """
         logger.info("... starting matchmaking")
         self.num_iterations = 0
@@ -103,11 +106,13 @@ class MatchMaking:
         self.teamsize = teamsize
         self.num_groups = self.num_players // self.teamsize
         self.to_file = to_file
+        self.split = split
         self._set_outputdir()
         self.min_max_pairing = min_max_pairing
         self._add_noise(noise_size, noise_digits)
         self._set_bins()
         self._init_teams()
+        self._swap_split()
 
     def _process_df(self, df):
         df["skill"] = df["skill"].astype(float)
@@ -216,8 +221,10 @@ class MatchMaking:
 
         idxs_0 = list(self.df[self.df.team == team_0].index)
         idxs_1 = list(self.df[self.df.team == team_1].index)
+        split_idx0 = self._get_split_player(team_0)
+        split_idx1 = self._get_split_player(team_1)
 
-        combos = self.get_idx_combos(idxs_0, idxs_1)
+        combos = self.get_idx_combos(idxs_0, idxs_1, (split_idx0, split_idx1))
 
         swapped = False
         # swap members: if score gets smaller through swapping
@@ -285,8 +292,47 @@ class MatchMaking:
             )
         logger.info("\n" + self.df.to_string())
 
+    def _swap_split(self):
+        assert(len(self.split) <= self.num_groups)
+        if self.split is None:
+            return
+        
+        split_count = self._get_split_count()
+        for i, num in enumerate(split_count):
+            while num > 1:
+                swap_team1 = self.df[self.df.team == i]
+                swap_player1 = swap_team1[swap_team1['player'].isin(self.split)].iloc[0]
+                swap_index = split_count.index(0)
+                swap_team2 = self.df[self.df.team == swap_index]
+                swap_player2 = swap_team2[swap_team2.skill_bin == swap_player1.skill_bin].iloc[0]
+                self.df.loc[self.df.player == swap_player1.player, 'team'] = swap_index
+                self.df.loc[self.df.player == swap_player2.player, 'team'] = i
+                split_count[i] = num = num - 1
+                split_count[swap_index] += 1
+
+
+    def _get_split_count(self):
+        split_players = self.df[self.df.player.isin(self.split)]
+        split_count = [0]*self.num_groups
+        for team, group in split_players.groupby('team'):
+            split_count[team] = len(group)
+        return split_count
+    
+    def _get_split_player(self, team):
+        # Индексы игроков из split в team
+        split_idxs = list(self.df[
+            (self.df.team == team) & (self.df.player.isin(self.split))
+        ].index)
+        if len(split_idxs) > 1:
+            raise NotImplementedError('Multiple split players not implemented')
+        try:
+            split_idx = split_idxs[0]
+        except IndexError:
+            split_idx = None
+        return split_idx
+
     @staticmethod
-    def get_idx_combos(idxs_0, idxs_1):
+    def get_idx_combos(idxs_0, idxs_1, idx_split=None):
         """
         Get all combinations of two sets of indices when swapping only one
         member between the two sets.
@@ -294,6 +340,16 @@ class MatchMaking:
         combos = []
         for idx_0 in idxs_0:
             for idx_1 in idxs_1:
+                # split игроков можно менять только со сплит
+                if idx_split:
+                    split_0, split_1 = idx_split                    
+                    # если только один из индексов из split - нельзя менять
+                    # (меняем либо не из split, либо оба из split)
+                    if not split_0 or not split_1:
+                        pass    # если хотя бы один None - не надо проверять
+                    elif (idx_0 == split_0) ^ (idx_1 == split_1):
+                        continue
+
                 _idxs_0 = idxs_0.copy()
                 _idxs_1 = idxs_1.copy()
                 _idxs_0.remove(idx_0)

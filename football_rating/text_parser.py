@@ -93,6 +93,7 @@ class PlayersText:
     filepath: str = None,
     text: str = None
     players: List[str] = field(default_factory=list)
+    to_split: List[str] = field(default_factory=list)
 
     def __post_init__(self):
         if not self.text:
@@ -102,6 +103,8 @@ class PlayersText:
         self.read(self.text)
 
     def read(self, lines: str):
+        self.players.clear()
+        self.to_split.clear()
         while not re.match(r'\s*\d', lines[0]):
             lines.pop(0)
         split_words = [
@@ -112,7 +115,14 @@ class PlayersText:
             ' абик',
             ' аб'
         ]
-        reg = re.compile(r'\d+\s*\.\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
+        '''
+        * (опционально) - в разные команды
+        число - номер игрока
+        . (опционально) - разделитель
+        имя
+        текст - лабуда какая-то по-моему
+        '''
+        reg = re.compile(r'\*?\d+\s*\.?\s*([а-яё]+(\s+[а-яё]+\.?)?)\s*')
         for i, line in enumerate(lines):
             if ',' in line:
                 line.remove(',')
@@ -134,3 +144,5 @@ class PlayersText:
             if name.endswith('.'):
                 name = name[:-1]
             self.players.append(name)
+            if line.lstrip().startswith('*'):
+                self.to_split.append(name)

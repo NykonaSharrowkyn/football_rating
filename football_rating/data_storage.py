@@ -11,6 +11,8 @@ from datetime import datetime
 from googleapiclient.discovery import build
 from typing import Tuple
 
+class StorageError(Exception):
+    pass     
 
 @dataclass
 class Storage(ABC):
@@ -85,7 +87,7 @@ class CsvTextFileStorage(FileStorage):
         # df = pd.DataFrame.from_dict(self.data.data, orient='index')
         # df.index.name = 'Name'
         # df.columns = ['Rating', 'Matches']
-        # df.to_csv(self.filepath)
+        # df.to_csv(self.filepath)   
 
 @dataclass
 class GSheetStorage(Storage):
@@ -152,10 +154,13 @@ class GSheetStorage(Storage):
 
 
     def read(self):
-        df: pd.DataFrame = self.wks.get_as_df()
-        df.set_index('Name', inplace=True)
-        self.data.df = df
-        self.data.sort()
+        try:
+            df: pd.DataFrame = self.wks.get_as_df()
+            df.set_index('Name', inplace=True)
+            self.data.df = df
+            self.data.sort()
+        except Exception:
+            raise StorageError('Ошибка: хранилище повреждено')
 
     def read_sheet(self, sheet_name) -> pd.DataFrame:
         wks = self.check_sheet(sheet_name)

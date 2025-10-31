@@ -1,5 +1,5 @@
 from .football_database import FootballDatabase, RecordNotFound
-from football_rating.data_storage import GSheetStorage
+from football_rating.data_storage import GSheetStorage, StorageError
 from football_rating.matchmaking import MatchMaking
 from football_rating.text_parser import MatchDayParser, PlayersText, PlayersFormatError, TeamNotFound
 from football_rating.football_rating_utility import player_generator
@@ -145,21 +145,23 @@ class FootballRatingBot:
         )
 
         text += (
-            '\n<b>Формат результатов:\n</b>'
-            'Синие: Илья М, Алеша П, Святогор\n'
-            'Красные: Добрыня Н, Микула С, Колыван\n'
-            'Желтые: Змей Г, Соловей Р, Идолище П\n\n'
+            '\n<b>Пример результатов:\n</b>'
+            '(сопоставление команд по первой букве)\n'
+            'Синие: Пирло, Буффон, Тотти\n'
+            'Красные: Роналдо Зуб, Рональдиньо, Цезар\n'
+            'Желтые: Зидан, Бартез, Анри П\n\n'
             'С 0:0 К\n'
             'К 2:0 Ж\n'
             'С 2:0 Ж\n'
         )
 
         text += (
-            '\n<b>Формат списка:</b>\n'
+            '\n<b>Пример списка:</b>\n'
             'Турнир имени Кожаного Мяча:\n'
-            '1. Месси\n'
-            '2. Криштиану Р\n'
-            '3. Рональдиньо\n'
+            '(* - разбить по разным командам)\n'
+            '1. Пирло\n'
+            '2. Рональдиньо\n'
+            '*3. Буффон\n'
             '...'
         )
         return text
@@ -318,7 +320,7 @@ class FootballRatingBot:
             self.db.update_admin(user.id, url, True)
             self.db.update_user(user.id, user.username, url)
             answer = f'Рейтинговая таблица успешно создана: {url}'
-        except ValueError as e:
+        except Exception as e:
             answer = str(e)
         await update.message.reply_text(answer)
     
@@ -337,7 +339,9 @@ class FootballRatingBot:
         try:
             count = context.user_data[self.TEAMS_KEY]
             self._clear_context(context)
-            players = PlayersText(text=update.message.text).players
+            parser = PlayersText(text=update.message.text)
+            players = parser.players
+            split_players = parser.to_split
             if len(players) % count != 0:
                 raise PlayersNotDivisable
             team_size = len(players) // count
@@ -347,12 +351,13 @@ class FootballRatingBot:
                 url=db_user.url
             )
             all_data = storage.data
+            storage = None
             players_data = all_data.get_players_match_data_dict(players)
             stored_players = list(players_data.keys())
             self._check_players(players, stored_players)
             df = pd.DataFrame.from_dict(players_data, orient='index').reset_index()
             df.columns = ['player', 'skill', 'matches']
-            matchmaker = MatchMaking(df, team_size)
+            matchmaker = MatchMaking(df, team_size, split=split_players)
             df = matchmaker.optimize()
             teams = df.groupby(['team'])[['player', 'skill']]
             team_list = []
@@ -370,7 +375,7 @@ class FootballRatingBot:
             answer = 'Количество участников должно делиться на число команд'
         except (RecordNotFound, PlayersNotFound, PlayersFormatError) as e:
             answer = str(e)            
-        except ValueError:
+        except (ValueError, AssertionError):
             answer = 'Не удалось получить число команд'
         await update.message.reply_text(answer, parse_mode='HTML')        
 
@@ -409,8 +414,8 @@ class FootballRatingBot:
             }            
             stored_data.set_players_match_data(new_player_data)
             storage.write()
-        except (AdminRequired, RecordNotFound, TeamNotFound, PlayersNotFound) as e:
-            answer = str(e)
+        except (AdminRequired, RecordNotFound, TeamNotFound, PlayersNotFound, StorageError) as e:
+            answer = str(e)            
         await update.message.reply_text(answer, parse_mode='HTML')
 
     async def _message_url(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
