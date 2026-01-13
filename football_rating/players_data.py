@@ -21,6 +21,8 @@ class PlayersStorageData:
         return self.df['Rating']
 
     def set_players_match_data(self, players: Dict[str, List[int]]):
+        if not players:
+            return
         df = pd.DataFrame.from_dict(players, orient='index')
         df.index.name = 'Name'
         df.columns = ['Rating', 'Matches']

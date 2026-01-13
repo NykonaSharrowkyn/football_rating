@@ -48,12 +48,13 @@ class PlayersNotDivisable(ValueError):
 class BotInteraction(IntEnum):
     NONE=0,
     GMAIL=1,
-    TEAMS=2,
+    TEAM_COUNT=2,
     PLAYERS=3,
     ADMIN=4,
     START=5,
     URL=6,
-    RESULTS=7
+    RESULTS=7,
+    TEAMS=8
 
 # только для синхронного кода без async
 def bot_command(fn):
@@ -77,7 +78,8 @@ class FootballRatingBot:
     INTERACTION_KEY = 'user_input'
     GMAIL_KEY = 'user_gmail'    
     USER_KEY = 'user_name'
-    TEAMS_KEY = 'team_size'
+    TEAM_COUNT_KEY = 'team_size'
+    TEAMS_KEY = 'teams'
     MAX_LEN = 64
     MAX_TABLES = 50
     GMAIL_REGEX = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
@@ -136,32 +138,38 @@ class FootballRatingBot:
     @bot_command
     def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         text: str = (
-            '<b>Список команд:</b>\n'
+            '<b>Список команд бота:</b>\n'
             '/admin - дать права редактирования\n'
             '/help - список команд и формат\n'
             '/results - загрузить результаты\n'
             '/split - разбить на команды\n'
             '/start - запуск или переключение между группами таблицами\n'
         )
-
+        
         text += (
-            '\n<b>Пример результатов:\n</b>'
-            '(сопоставление команд по первой букве)\n'
-            'Синие: Пирло, Буффон, Тотти\n'
-            'Красные: Роналдо Зуб, Рональдиньо, Цезар\n'
-            'Желтые: Зидан, Бартез, Анри П\n\n'
-            'С 0:0 К\n'
-            'К 2:0 Ж\n'
-            'С 2:0 Ж\n'
-        )
-
-        text += (
-            '\n<b>Пример списка:</b>\n'
-            '(* - разбить по разным командам)\n'
+            '\n<b>Пример списка игроков</b>\n'
+            '(* - разбить по разным командам):\n'
+            'Название турнира\n'
             '1. Пирло\n'
             '2. Рональдиньо\n'
             '*3. Буффон\n'
-            '...'
+            '4. Неймар\n'
+            '5. Мбаппе\n'
+            '*6. Доннарума\n'
+        )
+
+        text += ('\n<b>Пример списка команд</b>\n'
+            '(сопоставление команд по первой букве):\n'
+            'Синие: Пирло, Буффон, Тотти\n'
+            'Красные: Роналдо Зуб, Рональдиньо, Цезар\n'
+            'Желтые: Зидан, Бартез, Анри П\n\n'
+        )
+        
+        text += (
+            '\n<b>Пример результатов:\n</b>'
+            'С 0:0 К\n'
+            'К 2:0 Ж\n'
+            'С 2:0 Ж\n'
         )
         return text
 
@@ -171,8 +179,9 @@ class FootballRatingBot:
             callbacks = {
                 BotInteraction.GMAIL : self._message_gmail,
                 BotInteraction.ADMIN : self._message_admin,
-                BotInteraction.TEAMS : self._message_teams,
+                BotInteraction.TEAM_COUNT : self._message_team_count,
                 BotInteraction.PLAYERS: self._message_players,
+                BotInteraction.TEAMS: self._message_teams,
                 BotInteraction.RESULTS: self._message_results,
                 BotInteraction.URL: self._message_url
             }
@@ -183,8 +192,8 @@ class FootballRatingBot:
 
     @bot_command
     def results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data[self.INTERACTION_KEY] = BotInteraction.RESULTS
-        return 'Введите результаты по шаблону'
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.TEAMS
+        return 'Введите команды'
     
     def run(self):
         self.application.add_handler(CommandHandler("admin", self.admin))
@@ -201,7 +210,7 @@ class FootballRatingBot:
 
     @bot_command
     def split(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        context.user_data[self.INTERACTION_KEY] = BotInteraction.TEAMS
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.TEAM_COUNT
         return 'Количество команд?'
     
     # без декоратора - надо вернуть кнопки
@@ -324,9 +333,9 @@ class FootballRatingBot:
             answer = str(e)
         await update.message.reply_text(answer)
     
-    async def _message_teams(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def _message_team_count(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
-            context.user_data[self.TEAMS_KEY] = int(update.message.text)
+            context.user_data[self.TEAM_COUNT_KEY] = int(update.message.text)
             context.user_data[self.INTERACTION_KEY] = BotInteraction.PLAYERS
             answer = 'Введите участников по формату'
         except ValueError:
@@ -337,7 +346,7 @@ class FootballRatingBot:
         answer = self.INTERNAL_ERROR
         user = update.effective_user
         try:
-            count = context.user_data[self.TEAMS_KEY]
+            count = context.user_data[self.TEAM_COUNT_KEY]
             self._clear_context(context)
             parser = PlayersText(text=update.message.text)
             players = parser.players
@@ -379,9 +388,19 @@ class FootballRatingBot:
             answer = 'Не удалось получить число команд'
         await update.message.reply_text(answer, parse_mode='HTML')        
 
+    async def _message_teams(self, update: Update, context: ContextTypes.DEFAULT_TYPE)        :
+        context.user_data[self.TEAMS_KEY] = update.message.text
+        context.user_data[self.INTERACTION_KEY] = BotInteraction.RESULTS
+        answer = 'Введите результаты'
+        await update.message.reply_text(answer)
+
     async def _message_results(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
-        try:            
+        try:
+            parser = MatchDayParser()
+            parser.parse_teams(context.user_data[self.TEAMS_KEY].split('\n'))
+            parser.parse_results(update.message.text.split('\n'))
+            results = parser.results
             self._clear_context(context)
             user = self.db.get_user(user.id)
             if not self.db.is_admin(user.id, user.url):
@@ -392,7 +411,6 @@ class FootballRatingBot:
             )
             storage.update_time_stats(datetime.today())
             stored_data = storage.data            
-            results = MatchDayParser(text=update.message.text).results
             teams = results.teams
             players = [player.name for player in player_generator(teams)]
             stored_players = stored_data.get_players_match_data_dict(players)
@@ -412,11 +430,13 @@ class FootballRatingBot:
             new_player_data = {
                 player.name: (player.elo, player.matches) for player in player_generator(teams)
             }            
-            stored_data.set_players_match_data(new_player_data)
-            storage.write()
+            if new_player_data:
+                stored_data.set_players_match_data(new_player_data)
+                storage.write()
+
         except (AdminRequired, RecordNotFound, TeamNotFound, PlayersNotFound, StorageError) as e:
-            answer = str(e)            
-        await update.message.reply_text(answer, parse_mode='HTML')
+            answer = str(e)   
+        await update.message.reply_text(answer, parse_mode='HTML')            
 
     async def _message_url(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user        

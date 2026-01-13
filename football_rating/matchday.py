@@ -32,7 +32,9 @@ class Team:
             for elo in elos
         ]
         ep_player_team = [sum(ep)/len(ep) for ep in ep_individual]
-        ep_team = sum(ep_player_team)/len(ep_player_team)
+        ep_team = 0.5
+        if ep_player_team:
+            ep_team = sum(ep_player_team)/len(ep_player_team)
         return ep_team
 
     def short_name(self):

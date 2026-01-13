@@ -32,8 +32,11 @@ def read_team(team_line: str) -> Team:
     if dash != -1:
         team_line = team_line[:dash]
     team_name = team_line[:colon].rstrip().lstrip()
-    names = [name.lstrip().rstrip() for name in team_line[colon + 1:].split(',')]
-    players = [Player(name) for name in names]
+    names_str = team_line[colon + 1:]
+    players = []
+    if names_str:
+        names = [name.lstrip().rstrip() for name in names_str.split(',')]
+        players = [Player(name) for name in names]
     return Team(team_name, players)
 
 
@@ -60,18 +63,29 @@ class MatchDayParser:
     results: MatchDay = MatchDay([], [])
 
     def __post_init__(self):
-        if not self.text:
-            lines = read_lines(self.filepath)
-            self.parse(lines)
-        else:
+        #if not (self.text or self.filepath):
+#            return
+        lines = []
+        if self.text:
             lines = self.text.split('\n')
-            self.parse(lines)
+        elif self.filepath:
+            lines = read_lines(self.filepath)
+        self.parse(lines)
 
-    def parse(self, lines):
-        index = lines.index('')
+    def parse(self, lines):                
+        try:
+            index = lines.index('')        
+        except ValueError:
+            return
         team_lines = lines[:index]
         result_lines = lines[index + 1:]
+        self.parse_teams(team_lines)
+        self.parse_results(result_lines)
+    
+    def parse_teams(self, team_lines: str):
         self.results.teams = [read_team(line) for line in team_lines]
+
+    def parse_results(self, result_lines: str):
         self.results.matches = [
             read_match(line, self.results.teams) for line in result_lines
         ]
@@ -123,7 +137,10 @@ class PlayersText:
         текст - лабуда какая-то по-моему
         '''
         reg = re.compile(r'\*?(\d+\s*\.?)?\s*([а-яёa-z]+(\s+[а-яёa-z]+\.?)?)\s*')
-        for i, line in enumerate(lines):
+        for line in lines:
+            # проверяем строка начинается с вида *3.
+            if not re.match(r'^\s*\*?\d+\.', line):
+                continue
             split_player = line.lstrip().startswith('*')
             if split_player:
                 line = line.replace('*', '', 1)
