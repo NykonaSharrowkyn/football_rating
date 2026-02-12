@@ -148,7 +148,8 @@ class FootballRatingBot:
         
         text += (
             '\n<b>Пример списка игроков</b>\n'
-            '(* - разбить по разным командам):\n'
+            '(* - разбить по разным командам,'
+            'название не должно начаться с числа):\n'
             'Название турнира\n'
             '1. Пирло\n'
             '2. Рональдиньо\n'
@@ -159,7 +160,7 @@ class FootballRatingBot:
         )
 
         text += ('\n<b>Пример списка команд</b>\n'
-            '(сопоставление команд по первой букве):\n'
+            '(сопоставление команд по первой букве, можно пустые):\n'
             'Синие: Пирло, Буффон, Тотти\n'
             'Красные: Роналдо Зуб, Рональдиньо, Цезар\n'
             'Желтые: Зидан, Бартез, Анри П\n\n'
@@ -351,9 +352,6 @@ class FootballRatingBot:
             parser = PlayersText(text=update.message.text)
             players = parser.players
             split_players = parser.to_split
-            if len(players) % count != 0:
-                raise PlayersNotDivisable
-            team_size = len(players) // count
             db_user = self.db.get_user(user.id)
             storage = GSheetStorage(
                 service_json=self.gcp_key,
@@ -366,7 +364,7 @@ class FootballRatingBot:
             self._check_players(players, stored_players)
             df = pd.DataFrame.from_dict(players_data, orient='index').reset_index()
             df.columns = ['player', 'skill', 'matches']
-            matchmaker = MatchMaking(df, team_size, split=split_players)
+            matchmaker = MatchMaking(df, count, split=split_players)
             df = matchmaker.optimize()
             teams = df.groupby(['team'])[['player', 'skill']]
             team_list = []

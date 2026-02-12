@@ -74,7 +74,7 @@ class MatchMaking:
     def __init__(
         self,
         df,
-        teamsize=3,
+        team_count,
         min_max_pairing=False,
         noise_size=10000,
         noise_digits=2,
@@ -86,8 +86,8 @@ class MatchMaking:
         ----------
         df: pandas.DataFrame
             Must contain a 'skill' columns.
-        teamsize: int
-            Size of the teams.
+        team_count: int
+            Number of teams.
         min_max_pairing: boolean
             If true as swapping pairs the team with the maximum and the
             minimum deviation are used. Not recommended as the algorithm can
@@ -103,8 +103,8 @@ class MatchMaking:
         self.num_iterations = 0
         self.df = self._process_df(df)
         self.num_players = df.shape[0]
-        self.teamsize = teamsize
-        self.num_groups = self.num_players // self.teamsize
+        self.num_groups = team_count
+        self.num_bins = (self.num_players + team_count - 1) // team_count
         self.to_file = to_file
         self.split = split
         self._set_outputdir()
@@ -154,7 +154,7 @@ class MatchMaking:
         `self.teamsize`.
         """
         self.df["skill_bin"], self.bins = pd.qcut(
-            self.df.skill, self.teamsize, retbins=True, labels=False
+            self.df.skill, self.num_bins, retbins=True, labels=False
         )
         self.max_bin = self.df.skill_bin.max()
         self.min_bin = self.df.skill_bin.min()
@@ -272,43 +272,25 @@ class MatchMaking:
                 counter += 1
             logger.info(f"Iteration {iter_num}, best score: {self.score}")
         logger.info(f"Best result: {self.score}")
-        self._prepare_results()
         return self.df
-
-    def _prepare_results(self):
-        """
-        Write the results of the optimization to a .csv file. Before storing
-        the table is being sorted by teams.
-        """
-        self.df.sort_values("team", inplace=True)
-        self.df["mean_dev"] = self.df["team"].apply(lambda x: self.team_means[x])
-        self.df = self.df.rename(
-            columns={"skill": "skill_plus_noise", "original_skill": "skill"}
-        )
-        self.df["team"] = self.df["team"] + 1
-        if self.to_file:
-            self.df.to_csv(
-                os.path.join(self.OUTPUTDIR, f"et_groupsize_{self.teamsize}.csv")
-            )
-        logger.info("\n" + self.df.to_string())
 
     def _swap_split(self):
         assert(len(self.split) <= self.num_groups)
         if self.split is None:
             return
         
-        split_count = self._get_split_count()
+        split_count = self._get_split_count()                       # получаем число игроков из split по командам
         for i, num in enumerate(split_count):
-            while num > 1:
-                swap_team1 = self.df[self.df.team == i]
-                swap_player1 = swap_team1[swap_team1['player'].isin(self.split)].iloc[0]
-                swap_index = split_count.index(0)
-                swap_team2 = self.df[self.df.team == swap_index]
-                swap_player2 = swap_team2[swap_team2.skill_bin == swap_player1.skill_bin].iloc[0]
-                self.df.loc[self.df.player == swap_player1.player, 'team'] = swap_index
-                self.df.loc[self.df.player == swap_player2.player, 'team'] = i
-                split_count[i] = num = num - 1
-                split_count[swap_index] += 1
+            while num > 1:                                          # пока в команде есть > 1 игрока из split
+                swap_team1 = self.df[self.df.team == i]             # команда1 где надо убрать игрока из split
+                swap_player1 = swap_team1[swap_team1['player'].isin(self.split)].iloc[0]    # игрок которого убираем
+                swap_index = split_count.index(0)                   # индекс команды где 0 игроков из split
+                swap_team2 = self.df[self.df.team == swap_index]    # команда2 куда пойдет игрок из split
+                swap_player2 = swap_team2[swap_team2.skill_bin == swap_player1.skill_bin].iloc[0]       # меняем с игроком из соответствующего tier list
+                self.df.loc[self.df.player == swap_player1.player, 'team'] = swap_index                 # меняем команду
+                self.df.loc[self.df.player == swap_player2.player, 'team'] = i                          # меняем команду
+                split_count[i] = num = num - 1                      # из i убрали
+                split_count[swap_index] += 1                        # в swap_index добавили
 
 
     def _get_split_count(self):
