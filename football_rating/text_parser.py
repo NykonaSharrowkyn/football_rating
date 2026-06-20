@@ -127,7 +127,9 @@ class PlayersText:
             ' вместо',
             ' без абика',
             ' абик',
-            ' аб'
+            ' аб',
+            ' в раме',
+            ' рама'
         ]
         '''
         * (опционально) - в разные команды
@@ -144,8 +146,8 @@ class PlayersText:
             split_player = line.lstrip().startswith('*')
             if split_player:
                 line = line.replace('*', '', 1)
-            if ',' in line:
-                line.remove(',')
+            line.replace(',', ' ')
+            line.replace('.', ' ')
             # 1. Удалить \s*не_ascii\s* в начале строки
             line = re.sub(r'^\s*[^\w\sа-яА-ЯёЁ\-\.\\\/]+\s*', '', line, flags=re.UNICODE)
             # 2. Удалить все после первого не_ascii (включая его)

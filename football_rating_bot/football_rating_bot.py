@@ -231,13 +231,19 @@ class FootballRatingBot:
             )
         except Exception as e:
             logger.debug(str(e))
-            await update.message.reply_text(self.INTERNAL_ERROR)   
+            await update.message.reply_text(self.INTERNAL_ERROR)
 
     def _check_players(self, players, stored_players):
-        diff = set(players) - set(stored_players)
+        players_map = {player.lower(): player for player in players}
+        stored_lower = {player.lower() for player in stored_players}
+
+        diff = players_map.keys() - stored_lower
+
         if diff:
-            raise PlayersNotFound('<b>Не найдены игроки</b>:\n' + '\n'.join(diff))
-        return
+            raise PlayersNotFound(
+                '<b>Не найдены игроки</b>:\n' +
+                '\n'.join(players_map[p] for p in diff)
+            )
     
     def _clear_context(self, context: ContextTypes.DEFAULT_TYPE):
         context.user_data[self.INTERACTION_KEY] = BotInteraction.NONE

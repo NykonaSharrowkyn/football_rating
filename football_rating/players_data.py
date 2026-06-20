@@ -11,7 +11,9 @@ class PlayersStorageData:
         self.df = pd.DataFrame()
 
     def get_players_data(self, players: List[str]) -> pd.Series:
-        return self.df[self.df.index.isin(players)]
+        players_lower = {p.lower() for p in players}
+
+        return self.df[self.df.index.str.lower().isin(players_lower)]
 
     def get_players_match_data_dict(self, players: List[str]) -> Dict[str, List[int]]:
         series = self.get_players_data(players)
